@@ -38,7 +38,7 @@ message SetInputProcessorRequest {
     string name = 1;           // Name of the input processor to update
     uint32 scale_multiplier = 2;  // New scaling multiplier (0 = no change)
     uint32 scale_divisor = 3;     // New scaling divisor (0 = no change)
-    int32 rotation_degrees = 4;    // New rotation angle (-1 = no change)
+    int32 rotation_degrees = 4;    // New rotation angle (not yet implemented, reserved for future use)
 }
 
 message SetInputProcessorResponse {

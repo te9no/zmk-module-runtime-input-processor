@@ -78,6 +78,9 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
         }
     }
 
+    // Update rotation if provided and valid
+    // Note: Rotation is stored but not yet fully implemented in the processor
+    // It's kept for future implementation
     if (cfg->rotation_degrees >= -360 && cfg->rotation_degrees <= 360) {
         ret = zmk_input_processor_runtime_set_rotation(data->processor, 
                                                         cfg->rotation_degrees);

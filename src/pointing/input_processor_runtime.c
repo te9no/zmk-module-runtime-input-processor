@@ -120,22 +120,11 @@ static int runtime_processor_handle_event(const struct device *dev,
         scale_val(event, data->scale_multiplier, data->scale_divisor, state);
     }
 
-    // Apply rotation if needed
-    if (data->rotation_degrees != 0 && (x_idx >= 0 || y_idx >= 0)) {
-        // For rotation, we need to wait for both X and Y values
-        // This is a simplified version - stores the transformed value
-        int16_t value = event->value;
-        
-        if (is_x) {
-            // X' = X * cos - Y * sin (but we only have X here)
-            // For proper rotation, we'd need state to store pending values
-            // Simplified: just apply scaling for now, rotation would need paired handling
-            event->value = (value * data->cos_val) / 1000;
-        } else {
-            // Y' = X * sin + Y * cos (but we only have Y here)
-            event->value = (value * data->cos_val) / 1000;
-        }
-    }
+    // Note: Rotation is not fully implemented yet
+    // Proper 2D rotation requires paired X/Y values, which would need
+    // additional state management to buffer and transform coordinate pairs.
+    // For now, only scaling is applied.
+    // TODO: Implement proper rotation using state to pair X and Y events
 
     return ZMK_INPUT_PROC_CONTINUE;
 }
@@ -157,11 +146,14 @@ static int runtime_processor_init(const struct device *dev) {
 
     // Add to global list
     struct runtime_processor_node *node = k_malloc(sizeof(struct runtime_processor_node));
-    if (node) {
-        node->dev = dev;
-        sys_slist_append(&runtime_processors, &node->node);
-        LOG_INF("Runtime processor '%s' initialized", cfg->name);
+    if (!node) {
+        LOG_ERR("Failed to allocate memory for processor node");
+        return -ENOMEM;
     }
+    
+    node->dev = dev;
+    sys_slist_append(&runtime_processors, &node->node);
+    LOG_INF("Runtime processor '%s' initialized", cfg->name);
 
     return 0;
 }

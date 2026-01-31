@@ -240,7 +240,9 @@ static int handle_set_input_processor(const zmk_template_SetInputProcessorReques
     }
   }
 
-  // Update rotation if provided (>= 0)
+  // Update rotation if provided and within valid range
+  // Note: Rotation is stored but not yet fully implemented in the processor
+  // It's kept for future implementation
   if (req->rotation_degrees >= -360 && req->rotation_degrees <= 360) {
     int ret = zmk_input_processor_runtime_set_rotation(dev, req->rotation_degrees);
     if (ret < 0) {
