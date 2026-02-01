@@ -15,6 +15,7 @@ import {
   Request,
   Response,
   InputProcessorInfo,
+  Notification,
 } from "./proto/zmk/template/custom";
 
 // Custom subsystem identifier - must match firmware registration
@@ -118,26 +119,16 @@ export function InputProcessorManager() {
     setError(null);
 
     try {
+      // Request list of input processors - notifications will be sent for each processor
       const request = Request.create({
         listInputProcessors: {},
       });
 
       const resp = await callRPC(request);
-      if (resp?.listInputProcessors) {
-        setProcessors(resp.listInputProcessors.processors);
-        if (
-          resp.listInputProcessors.processors.length > 0 &&
-          !selectedProcessor
-        ) {
-          const first = resp.listInputProcessors.processors[0];
-          setSelectedProcessor(first.name);
-          setScaleMultiplier(first.scaleMultiplier);
-          setScaleDivisor(first.scaleDivisor);
-          setRotationDegrees(first.rotationDegrees);
-        }
-      } else if (resp?.error) {
+      if (resp?.error) {
         setError(resp.error.message);
       }
+      // Response is empty - processors will arrive via notifications
     } catch (err) {
       setError(
         `Failed to load processors: ${err instanceof Error ? err.message : "Unknown error"}`
@@ -223,6 +214,58 @@ export function InputProcessorManager() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subsystem]);
+
+  // Subscribe to notifications for processor changes
+  useEffect(() => {
+    if (!zmkApp || !subsystem) return;
+
+    const unsubscribe = zmkApp.onNotification({
+      type: "custom",
+      subsystemIndex: subsystem.index,
+      callback: (notification) => {
+        try {
+          // notification.payload contains the encoded Notification message
+          const decoded = Notification.decode(notification.payload);
+          if (decoded.inputProcessorChanged?.processor) {
+            const proc = decoded.inputProcessorChanged.processor;
+            
+            // Update or add processor to the list
+            setProcessors((prev) => {
+              const existingIndex = prev.findIndex((p) => p.name === proc.name);
+              if (existingIndex >= 0) {
+                // Update existing processor
+                const updated = [...prev];
+                updated[existingIndex] = proc;
+                return updated;
+              } else {
+                // Add new processor
+                return [...prev, proc];
+              }
+            });
+
+            // If this is the currently selected processor, update form values
+            if (selectedProcessor === proc.name) {
+              setScaleMultiplier(proc.scaleMultiplier);
+              setScaleDivisor(proc.scaleDivisor);
+              setRotationDegrees(proc.rotationDegrees);
+            }
+
+            // If no processor is selected yet, select the first one
+            if (!selectedProcessor) {
+              setSelectedProcessor(proc.name);
+              setScaleMultiplier(proc.scaleMultiplier);
+              setScaleDivisor(proc.scaleDivisor);
+              setRotationDegrees(proc.rotationDegrees);
+            }
+          }
+        } catch (err) {
+          console.error("Failed to decode notification:", err);
+        }
+      },
+    });
+
+    return unsubscribe;
+  }, [zmkApp, subsystem, selectedProcessor]);
 
   if (!zmkApp) return null;
 
