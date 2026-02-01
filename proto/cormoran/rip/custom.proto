@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package cormoran.rip;
+
+// Runtime Input Processor Messages
+message InputProcessorInfo {
+    string name             = 1;  // Short name (max 16 chars for BLE)
+    uint32 scale_multiplier = 2;  // Scaling multiplier
+    uint32 scale_divisor =
+        3;  // Scaling divisor (multiply by scale_multiplier/scale_divisor)
+    int32 rotation_degrees = 4;  // Rotation angle in degrees
+}
+
+message ListInputProcessorsRequest {
+    // Empty - requests list of all input processors
+}
+
+message ListInputProcessorsResponse {
+    repeated InputProcessorInfo processors = 1;
+}
+
+message GetInputProcessorRequest {
+    string name = 1;  // Name of the input processor
+}
+
+message GetInputProcessorResponse {
+    InputProcessorInfo processor = 1;
+}
+
+message SetScaleMultiplierRequest {
+    string name  = 1;  // Name of the input processor to update
+    uint32 value = 2;  // New scaling multiplier
+}
+
+message SetScaleDivisorRequest {
+    string name  = 1;  // Name of the input processor to update
+    uint32 value = 2;  // New scaling divisor
+}
+
+message SetRotationRequest {
+    string name = 1;  // Name of the input processor to update
+    int32 value = 2;  // New rotation angle in degrees
+}
+
+message ResetInputProcessorRequest {
+    string name = 1;  // Name of the input processor to reset
+}
+
+message SetScaleMultiplierResponse {
+    // Empty - use notification to report changes
+}
+
+message SetScaleDivisorResponse {
+    // Empty - use notification to report changes
+}
+
+message SetRotationResponse {
+    // Empty - use notification to report changes
+}
+
+message ResetInputProcessorResponse {
+    // Empty - use notification to report changes
+}
+
+message Request {
+    oneof request_type {
+        ListInputProcessorsRequest list_input_processors = 1;
+        GetInputProcessorRequest get_input_processor     = 2;
+        SetScaleMultiplierRequest set_scale_multiplier   = 3;
+        SetScaleDivisorRequest set_scale_divisor         = 4;
+        SetRotationRequest set_rotation                  = 5;
+        ResetInputProcessorRequest reset_input_processor = 6;
+    }
+}
+
+message ErrorResponse {
+    string message = 1;
+}
+
+message Response {
+    oneof response_type {
+        ErrorResponse error                               = 1;
+        ListInputProcessorsResponse list_input_processors = 2;
+        GetInputProcessorResponse get_input_processor     = 3;
+        SetScaleMultiplierResponse set_scale_multiplier   = 4;
+        SetScaleDivisorResponse set_scale_divisor         = 5;
+        SetRotationResponse set_rotation                  = 6;
+        ResetInputProcessorResponse reset_input_processor = 7;
+    }
+}
+
+// Notifications
+message InputProcessorChangedNotification {
+    InputProcessorInfo processor = 1;
+}
+
+message Notification {
+    oneof notification_type {
+        InputProcessorChangedNotification input_processor_changed = 1;
+    }
+}
