@@ -5,6 +5,7 @@
  * configuration.
  */
 
+#include <cormoran/rip/custom.pb.h>
 #include <pb_decode.h>
 #include <pb_encode.h>
 #include <zephyr/logging/log.h>
@@ -12,7 +13,6 @@
 #include <zmk/events/input_processor_state_changed.h>
 #include <zmk/pointing/input_processor_runtime.h>
 #include <zmk/studio/custom.h>
-#include <zmk/template/custom.pb.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR)
@@ -20,98 +20,95 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 /**
  * Metadata for the custom subsystem.
  */
-static struct zmk_rpc_custom_subsystem_meta template_feature_meta = {
+static struct zmk_rpc_custom_subsystem_meta rip_feature_meta = {
     ZMK_RPC_CUSTOM_SUBSYSTEM_UI_URLS("http://localhost:5173"),
     .security = ZMK_STUDIO_RPC_HANDLER_UNSECURED,
 };
 
 /**
  * Register the custom RPC subsystem.
- * Using "zmk__input_proc_rt" as the identifier (input processor runtime)
+ * Using "cormoran_rip" as the identifier (input processor runtime)
  */
-ZMK_RPC_CUSTOM_SUBSYSTEM(zmk__input_proc_rt, &template_feature_meta,
-                         template_rpc_handle_request);
+ZMK_RPC_CUSTOM_SUBSYSTEM(cormoran_rip, &rip_feature_meta,
+                         rip_rpc_handle_request);
 
-ZMK_RPC_CUSTOM_SUBSYSTEM_RESPONSE_BUFFER(zmk__input_proc_rt,
-                                         zmk_template_Response);
+ZMK_RPC_CUSTOM_SUBSYSTEM_RESPONSE_BUFFER(cormoran_rip, cormoran_rip_Response);
 
 static int handle_list_input_processors(
-    const zmk_template_ListInputProcessorsRequest *req,
-    zmk_template_Response *resp);
+    const cormoran_rip_ListInputProcessorsRequest *req,
+    cormoran_rip_Response *resp);
 static int handle_get_input_processor(
-    const zmk_template_GetInputProcessorRequest *req,
-    zmk_template_Response *resp);
+    const cormoran_rip_GetInputProcessorRequest *req,
+    cormoran_rip_Response *resp);
 static int handle_set_scale_multiplier(
-    const zmk_template_SetScaleMultiplierRequest *req,
-    zmk_template_Response *resp);
+    const cormoran_rip_SetScaleMultiplierRequest *req,
+    cormoran_rip_Response *resp);
 static int handle_set_scale_divisor(
-    const zmk_template_SetScaleDivisorRequest *req,
-    zmk_template_Response *resp);
-static int handle_set_rotation(const zmk_template_SetRotationRequest *req,
-                               zmk_template_Response *resp);
+    const cormoran_rip_SetScaleDivisorRequest *req,
+    cormoran_rip_Response *resp);
+static int handle_set_rotation(const cormoran_rip_SetRotationRequest *req,
+                               cormoran_rip_Response *resp);
 static int handle_reset_input_processor(
-    const zmk_template_ResetInputProcessorRequest *req,
-    zmk_template_Response *resp);
+    const cormoran_rip_ResetInputProcessorRequest *req,
+    cormoran_rip_Response *resp);
 
 /**
  * Main request handler for the custom RPC subsystem.
  */
-static bool template_rpc_handle_request(
-    const zmk_custom_CallRequest *raw_request, pb_callback_t *encode_response) {
-    zmk_template_Response *resp =
-        ZMK_RPC_CUSTOM_SUBSYSTEM_RESPONSE_BUFFER_ALLOCATE(zmk__input_proc_rt,
+static bool rip_rpc_handle_request(const zmk_custom_CallRequest *raw_request,
+                                   pb_callback_t *encode_response) {
+    cormoran_rip_Response *resp =
+        ZMK_RPC_CUSTOM_SUBSYSTEM_RESPONSE_BUFFER_ALLOCATE(cormoran_rip,
                                                           encode_response);
 
-    zmk_template_Request req = zmk_template_Request_init_zero;
+    cormoran_rip_Request req = cormoran_rip_Request_init_zero;
 
     // Decode the incoming request from the raw payload
     pb_istream_t req_stream = pb_istream_from_buffer(raw_request->payload.bytes,
                                                      raw_request->payload.size);
-    if (!pb_decode(&req_stream, zmk_template_Request_fields, &req)) {
-        LOG_WRN("Failed to decode template request: %s",
-                PB_GET_ERROR(&req_stream));
-        zmk_template_ErrorResponse err = zmk_template_ErrorResponse_init_zero;
+    if (!pb_decode(&req_stream, cormoran_rip_Request_fields, &req)) {
+        LOG_WRN("Failed to decode rip request: %s", PB_GET_ERROR(&req_stream));
+        cormoran_rip_ErrorResponse err = cormoran_rip_ErrorResponse_init_zero;
         snprintf(err.message, sizeof(err.message), "Failed to decode request");
-        resp->which_response_type = zmk_template_Response_error_tag;
+        resp->which_response_type = cormoran_rip_Response_error_tag;
         resp->response_type.error = err;
         return true;
     }
 
     int rc = 0;
     switch (req.which_request_type) {
-        case zmk_template_Request_list_input_processors_tag:
+        case cormoran_rip_Request_list_input_processors_tag:
             rc = handle_list_input_processors(
                 &req.request_type.list_input_processors, resp);
             break;
-        case zmk_template_Request_get_input_processor_tag:
+        case cormoran_rip_Request_get_input_processor_tag:
             rc = handle_get_input_processor(
                 &req.request_type.get_input_processor, resp);
             break;
-        case zmk_template_Request_set_scale_multiplier_tag:
+        case cormoran_rip_Request_set_scale_multiplier_tag:
             rc = handle_set_scale_multiplier(
                 &req.request_type.set_scale_multiplier, resp);
             break;
-        case zmk_template_Request_set_scale_divisor_tag:
+        case cormoran_rip_Request_set_scale_divisor_tag:
             rc = handle_set_scale_divisor(&req.request_type.set_scale_divisor,
                                           resp);
             break;
-        case zmk_template_Request_set_rotation_tag:
+        case cormoran_rip_Request_set_rotation_tag:
             rc = handle_set_rotation(&req.request_type.set_rotation, resp);
             break;
-        case zmk_template_Request_reset_input_processor_tag:
+        case cormoran_rip_Request_reset_input_processor_tag:
             rc = handle_reset_input_processor(
                 &req.request_type.reset_input_processor, resp);
             break;
         default:
-            LOG_WRN("Unsupported template request type: %d",
-                    req.which_request_type);
+            LOG_WRN("Unsupported rip request type: %d", req.which_request_type);
             rc = -1;
     }
 
     if (rc != 0) {
-        zmk_template_ErrorResponse err = zmk_template_ErrorResponse_init_zero;
+        cormoran_rip_ErrorResponse err = cormoran_rip_ErrorResponse_init_zero;
         snprintf(err.message, sizeof(err.message), "Failed to process request");
-        resp->which_response_type = zmk_template_Response_error_tag;
+        resp->which_response_type = cormoran_rip_Response_error_tag;
         resp->response_type.error = err;
     }
     return true;
@@ -154,15 +151,15 @@ K_WORK_DEFINE(list_input_processors_work, list_input_processors_work_handler);
  * Handle listing all input processors - raises events for each
  */
 static int handle_list_input_processors(
-    const zmk_template_ListInputProcessorsRequest *req,
-    zmk_template_Response *resp) {
+    const cormoran_rip_ListInputProcessorsRequest *req,
+    cormoran_rip_Response *resp) {
     k_work_submit(&list_input_processors_work);
 
     // Return empty response (notifications sent via events contain the data)
-    resp->which_response_type = zmk_template_Response_list_input_processors_tag;
+    resp->which_response_type = cormoran_rip_Response_list_input_processors_tag;
     resp->response_type.list_input_processors =
-        (zmk_template_ListInputProcessorsResponse)
-            zmk_template_ListInputProcessorsResponse_init_zero;
+        (cormoran_rip_ListInputProcessorsResponse)
+            cormoran_rip_ListInputProcessorsResponse_init_zero;
     return 0;
 }
 
@@ -170,8 +167,8 @@ static int handle_list_input_processors(
  * Handle getting a specific input processor configuration
  */
 static int handle_get_input_processor(
-    const zmk_template_GetInputProcessorRequest *req,
-    zmk_template_Response *resp) {
+    const cormoran_rip_GetInputProcessorRequest *req,
+    cormoran_rip_Response *resp) {
     LOG_DBG("Getting input processor: %s", req->name);
 
     const struct device *dev =
@@ -181,8 +178,8 @@ static int handle_get_input_processor(
         return -ENODEV;
     }
 
-    zmk_template_GetInputProcessorResponse result =
-        zmk_template_GetInputProcessorResponse_init_zero;
+    cormoran_rip_GetInputProcessorResponse result =
+        cormoran_rip_GetInputProcessorResponse_init_zero;
 
     const char *name;
     struct zmk_input_processor_runtime_config config;
@@ -197,7 +194,7 @@ static int handle_get_input_processor(
     result.processor.scale_divisor    = config.scale_divisor;
     result.processor.rotation_degrees = config.rotation_degrees;
 
-    resp->which_response_type = zmk_template_Response_get_input_processor_tag;
+    resp->which_response_type = cormoran_rip_Response_get_input_processor_tag;
     resp->response_type.get_input_processor = result;
 
     return 0;
@@ -207,8 +204,8 @@ static int handle_get_input_processor(
  * Handle setting scale multiplier
  */
 static int handle_set_scale_multiplier(
-    const zmk_template_SetScaleMultiplierRequest *req,
-    zmk_template_Response *resp) {
+    const cormoran_rip_SetScaleMultiplierRequest *req,
+    cormoran_rip_Response *resp) {
     LOG_DBG("Setting scale multiplier for %s to %d", req->name, req->value);
 
     const struct device *dev =
@@ -236,10 +233,10 @@ static int handle_set_scale_multiplier(
     // Event will be raised by listener
 
     // Return empty response
-    resp->which_response_type = zmk_template_Response_set_scale_multiplier_tag;
+    resp->which_response_type = cormoran_rip_Response_set_scale_multiplier_tag;
     resp->response_type.set_scale_multiplier =
-        (zmk_template_SetScaleMultiplierResponse)
-            zmk_template_SetScaleMultiplierResponse_init_zero;
+        (cormoran_rip_SetScaleMultiplierResponse)
+            cormoran_rip_SetScaleMultiplierResponse_init_zero;
 
     return 0;
 }
@@ -248,8 +245,8 @@ static int handle_set_scale_multiplier(
  * Handle setting scale divisor
  */
 static int handle_set_scale_divisor(
-    const zmk_template_SetScaleDivisorRequest *req,
-    zmk_template_Response *resp) {
+    const cormoran_rip_SetScaleDivisorRequest *req,
+    cormoran_rip_Response *resp) {
     LOG_DBG("Setting scale divisor for %s to %d", req->name, req->value);
 
     const struct device *dev =
@@ -277,10 +274,10 @@ static int handle_set_scale_divisor(
     // Event will be raised by listener
 
     // Return empty response
-    resp->which_response_type = zmk_template_Response_set_scale_divisor_tag;
+    resp->which_response_type = cormoran_rip_Response_set_scale_divisor_tag;
     resp->response_type.set_scale_divisor =
-        (zmk_template_SetScaleDivisorResponse)
-            zmk_template_SetScaleDivisorResponse_init_zero;
+        (cormoran_rip_SetScaleDivisorResponse)
+            cormoran_rip_SetScaleDivisorResponse_init_zero;
 
     return 0;
 }
@@ -288,8 +285,8 @@ static int handle_set_scale_divisor(
 /**
  * Handle setting rotation
  */
-static int handle_set_rotation(const zmk_template_SetRotationRequest *req,
-                               zmk_template_Response *resp) {
+static int handle_set_rotation(const cormoran_rip_SetRotationRequest *req,
+                               cormoran_rip_Response *resp) {
     LOG_DBG("Setting rotation for %s to %d degrees", req->name, req->value);
 
     const struct device *dev =
@@ -309,9 +306,9 @@ static int handle_set_rotation(const zmk_template_SetRotationRequest *req,
     // Event will be raised by listener
 
     // Return empty response
-    resp->which_response_type        = zmk_template_Response_set_rotation_tag;
-    resp->response_type.set_rotation = (zmk_template_SetRotationResponse)
-        zmk_template_SetRotationResponse_init_zero;
+    resp->which_response_type        = cormoran_rip_Response_set_rotation_tag;
+    resp->response_type.set_rotation = (cormoran_rip_SetRotationResponse)
+        cormoran_rip_SetRotationResponse_init_zero;
 
     return 0;
 }
@@ -320,8 +317,8 @@ static int handle_set_rotation(const zmk_template_SetRotationRequest *req,
  * Handle resetting input processor to defaults
  */
 static int handle_reset_input_processor(
-    const zmk_template_ResetInputProcessorRequest *req,
-    zmk_template_Response *resp) {
+    const cormoran_rip_ResetInputProcessorRequest *req,
+    cormoran_rip_Response *resp) {
     LOG_DBG("Resetting input processor: %s", req->name);
 
     const struct device *dev =
@@ -341,10 +338,10 @@ static int handle_reset_input_processor(
     // Event will be raised by listener
 
     // Return empty response
-    resp->which_response_type = zmk_template_Response_reset_input_processor_tag;
+    resp->which_response_type = cormoran_rip_Response_reset_input_processor_tag;
     resp->response_type.reset_input_processor =
-        (zmk_template_ResetInputProcessorResponse)
-            zmk_template_ResetInputProcessorResponse_init_zero;
+        (cormoran_rip_ResetInputProcessorResponse)
+            cormoran_rip_ResetInputProcessorResponse_init_zero;
 
     return 0;
 }

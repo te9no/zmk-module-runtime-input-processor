@@ -16,10 +16,10 @@ import {
   Response,
   InputProcessorInfo,
   Notification,
-} from "./proto/zmk/template/custom";
+} from "./proto/cormoran/rip/custom";
 
 // Custom subsystem identifier - must match firmware registration
-export const SUBSYSTEM_IDENTIFIER = "zmk__input_proc_rt";
+export const SUBSYSTEM_IDENTIFIER = "cormoran_rip";
 
 function App() {
   return (

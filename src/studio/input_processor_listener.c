@@ -5,12 +5,12 @@
  * Studio
  */
 
+#include <cormoran/rip/custom.pb.h>
 #include <pb_encode.h>
 #include <zephyr/logging/log.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/input_processor_state_changed.h>
 #include <zmk/studio/custom.h>
-#include <zmk/template/custom.pb.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 #if IS_ENABLED(CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC)
@@ -18,13 +18,13 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 // Encoder for the notification
 static bool encode_notification(pb_ostream_t *stream, const pb_field_t *field,
                                 void *const *arg) {
-    zmk_template_Notification *notification = (zmk_template_Notification *)*arg;
+    cormoran_rip_Notification *notification = (cormoran_rip_Notification *)*arg;
     if (!pb_encode_tag_for_field(stream, field)) {
         return false;
     }
 
     size_t size;
-    if (!pb_get_encoded_size(&size, zmk_template_Notification_fields,
+    if (!pb_get_encoded_size(&size, cormoran_rip_Notification_fields,
                              notification)) {
         LOG_WRN("Failed to get encoded size for notification");
         return false;
@@ -33,7 +33,7 @@ static bool encode_notification(pb_ostream_t *stream, const pb_field_t *field,
     if (!pb_encode_varint(stream, size)) {
         return false;
     }
-    return pb_encode(stream, zmk_template_Notification_fields, notification);
+    return pb_encode(stream, cormoran_rip_Notification_fields, notification);
 }
 
 // Find subsystem index by iterating through registered subsystems
@@ -64,12 +64,12 @@ static int input_processor_state_changed_listener(const zmk_event_t *eh) {
 
     LOG_DBG("Input processor state changed: %s", ev->name);
 
-    zmk_template_Notification notification =
-        zmk_template_Notification_init_zero;
+    cormoran_rip_Notification notification =
+        cormoran_rip_Notification_init_zero;
     notification.which_notification_type =
-        zmk_template_Notification_input_processor_changed_tag;
+        cormoran_rip_Notification_input_processor_changed_tag;
     notification.notification_type.input_processor_changed.has_processor = true;
-    zmk_template_InputProcessorInfo *info =
+    cormoran_rip_InputProcessorInfo *info =
         &notification.notification_type.input_processor_changed.processor;
 
     strncpy(info->name, ev->name, sizeof(info->name) - 1);
@@ -85,7 +85,7 @@ static int input_processor_state_changed_listener(const zmk_event_t *eh) {
     // Raise notification event
     raise_zmk_studio_custom_notification(
         (struct zmk_studio_custom_notification){
-            .subsystem_index = find_subsystem_index("zmk__input_proc_rt"),
+            .subsystem_index = find_subsystem_index("cormoran_rip"),
             .encode_payload  = encode_cb});
 
     LOG_INF("Sent notification for processor %s", ev->name);
