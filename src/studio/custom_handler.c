@@ -15,7 +15,7 @@
 #include <zmk/template/custom.pb.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#if IS_ENABLED(CONFIG_ZMK_TEMPLATE_FEATURE_RUNTIME_INPUT_PROCESSOR)
+#if IS_ENABLED(CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR)
 
 /**
  * Metadata for the custom subsystem.
@@ -349,4 +349,4 @@ static int handle_reset_input_processor(
     return 0;
 }
 
-#endif  // CONFIG_ZMK_TEMPLATE_FEATURE_RUNTIME_INPUT_PROCESSOR
+#endif  // CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR

@@ -13,7 +13,7 @@
 #include <zmk/template/custom.pb.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
-#if IS_ENABLED(CONFIG_ZMK_TEMPLATE_FEATURE_STUDIO_RPC)
+#if IS_ENABLED(CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC)
 
 // Encoder for the notification
 static bool encode_notification(pb_ostream_t *stream, const pb_field_t *field,
@@ -98,8 +98,8 @@ ZMK_LISTENER(input_processor_state_listener,
 ZMK_SUBSCRIPTION(input_processor_state_listener,
                  zmk_input_processor_state_changed);
 
-// TODO: Relay event to peripheral when macros are available in ZMK
-// ZMK_SPLIT_RELAY_EVENT_FROM_CENTRAL(zmk_input_processor_state_changed);
-// ZMK_SPLIT_RELAY_EVENT_FROM_PERIPHERAL(zmk_input_processor_state_changed);
+// NOTE: relay from peripheral is not required because all input-processors can
+// be defined in central side
+//       input-processor should be set to zmk,input-split in central side
 
-#endif  // CONFIG_ZMK_TEMPLATE_FEATURE_STUDIO_RPC
+#endif  // CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC

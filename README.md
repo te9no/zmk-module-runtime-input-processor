@@ -10,8 +10,7 @@ This ZMK module provides runtime configurable input processors for pointing devi
 - **Rotation Support**: Apply rotation transformations in degrees (fully implemented with paired X/Y handling)
 - **Persistent Settings**: Settings saved to non-volatile storage
 - **Multiple Processors**: Support for multiple input processors with individual configuration
-- **Split Keyboard Support**: Protocol designed for split keyboards including peripheral support
-- **Short Names**: Processor names limited to 16 characters for BLE efficiency
+- **Short Names**: Processor names limited to 8 characters for BLE efficiency
 - **Temporary Changes**: Hold a key to temporarily change settings (perfect for DPI toggle)
 
 ## Setup
@@ -39,11 +38,11 @@ manifest:
 
 ```conf
 # Enable runtime input processor
-CONFIG_ZMK_TEMPLATE_FEATURE=y
+CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR=y
 
 # Enable studio custom RPC features for web UI
 CONFIG_ZMK_STUDIO=y
-CONFIG_ZMK_TEMPLATE_FEATURE_STUDIO_RPC=y
+CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC=y
 ```
 
 ### 3. Add runtime input processor to your keymap
@@ -65,10 +64,26 @@ CONFIG_ZMK_TEMPLATE_FEATURE_STUDIO_RPC=y
     };
 
     // Then use it in your input device configuration
-    my_input_device {
+    my_input_listener {
         // ... other config ...
         input-processors = <&my_pointer_processor>;
     };
+
+    // For split keyboard, you can configure input processor in central
+    split_input: split_input {
+        compatible = "zmk,input-split"
+    };
+    split_listener: split_listener {
+        compatible = "zmk,input-listener";
+        status = <disabled>;
+        device = <&split_input>;
+    };
+};
+
+// <central>.overlay
+&split_listener {
+    status = "okay";
+    input-processors = <&my_pointer_processor>;
 };
 ```
 
@@ -92,12 +107,14 @@ CONFIG_ZMK_TEMPLATE_FEATURE_STUDIO_RPC=y
 ### Example Configurations
 
 **2x Speed:**
+
 ```
 scale-multiplier = 2
 scale-divisor = 1
 ```
 
 **Half Speed:**
+
 ```
 scale-multiplier = 1
 scale-divisor = 2
@@ -144,6 +161,7 @@ You can temporarily change input processor settings while holding a key, useful 
 ```
 
 When you press and hold a key with the temporary config behavior:
+
 1. Current settings are saved
 2. Temporary settings are applied
 3. When you release the key, original settings are restored
@@ -276,7 +294,6 @@ Then, the Web UI will be available in
 For previewing web UI changes in pull requests:
 
 1. Create a Cloudflare Workers project and configure secrets:
-
    - `CLOUDFLARE_API_TOKEN`: API token with Cloudflare Pages edit permission
    - `CLOUDFLARE_ACCOUNT_ID`: Your Cloudflare account ID
    - (Optional) `CLOUDFLARE_PROJECT_NAME`: Project name (defaults to `zmk-module-web-ui`)
