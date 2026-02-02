@@ -19,8 +19,12 @@
 
 #include <zmk/event_manager.h>
 #include <zmk/events/input_processor_state_changed.h>
+#include <zmk/events/keycode_state_changed.h>
 #include <zmk/events/position_state_changed.h>
 #include <zmk/keymap.h>
+#include <zmk/keys.h>
+#include <zmk/hid.h>
+#include <zmk/behavior.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -64,14 +68,14 @@ struct runtime_processor_data {
     // Auto-mouse layer settings
     bool auto_mouse_enabled;
     uint8_t auto_mouse_layer;
-    uint32_t auto_mouse_activation_delay_ms;
-    uint32_t auto_mouse_deactivation_delay_ms;
+    uint16_t auto_mouse_activation_delay_ms;
+    uint16_t auto_mouse_deactivation_delay_ms;
     
     // Persistent auto-mouse settings
     bool persistent_auto_mouse_enabled;
     uint8_t persistent_auto_mouse_layer;
-    uint32_t persistent_auto_mouse_activation_delay_ms;
-    uint32_t persistent_auto_mouse_deactivation_delay_ms;
+    uint16_t persistent_auto_mouse_activation_delay_ms;
+    uint16_t persistent_auto_mouse_deactivation_delay_ms;
     
     // Auto-mouse runtime state
     struct k_work_delayable auto_mouse_activation_work;
@@ -204,9 +208,6 @@ static int runtime_processor_handle_event(
                 k_work_reschedule(&data->auto_mouse_activation_work, K_NO_WAIT);
             }
         }
-        
-        // Cancel any pending deactivation
-        k_work_cancel_delayable(&data->auto_mouse_deactivation_work);
     }
 
     // Apply scaling first
@@ -274,8 +275,8 @@ struct processor_settings {
     int32_t rotation_degrees;
     bool auto_mouse_enabled;
     uint8_t auto_mouse_layer;
-    uint32_t auto_mouse_activation_delay_ms;
-    uint32_t auto_mouse_deactivation_delay_ms;
+    uint16_t auto_mouse_activation_delay_ms;
+    uint16_t auto_mouse_deactivation_delay_ms;
 };
 
 static void save_processor_settings_work_handler(struct k_work *work) {
@@ -667,9 +668,9 @@ static int runtime_processor_settings_load_cb(const char *name, size_t len,
 
 #endif
 
-// Event listener for detecting key presses (for auto-mouse layer deactivation)
-static int position_state_changed_listener(const zmk_event_t *eh) {
-    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
+// Event listener for keycode changes (for timestamp tracking)
+static int keycode_state_changed_listener(const zmk_event_t *eh) {
+    struct zmk_keycode_state_changed *ev = as_zmk_keycode_state_changed(eh);
     if (ev == NULL) {
         return ZMK_EV_EVENT_BUBBLE;
     }
@@ -685,25 +686,109 @@ static int position_state_changed_listener(const zmk_event_t *eh) {
         const struct device *dev = runtime_processors[i];
         struct runtime_processor_data *data = dev->data;
         data->last_keypress_timestamp = now;
+    }
+    
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+// Event listener for position changes (for auto-mouse deactivation logic)
+static int position_state_changed_listener(const zmk_event_t *eh) {
+    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
+    if (ev == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    
+    // Only handle key presses
+    if (!ev->state) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    
+    // Check auto-mouse deactivation for all processors
+    for (size_t i = 0; i < runtime_processors_count; i++) {
+        const struct device *dev = runtime_processors[i];
+        struct runtime_processor_data *data = dev->data;
         
-        // Deactivate auto-mouse layer if it's active
-        // Note: We deactivate on ANY key press. The layer should only be active
-        // when using the pointing device. If the user wants to keep it active,
-        // they should use the keep-active behavior.
-        if (data->auto_mouse_enabled && data->auto_mouse_layer_active && 
-            !data->auto_mouse_keep_active) {
-            LOG_DBG("Deactivating auto-mouse layer due to key press");
-            k_work_cancel_delayable(&data->auto_mouse_deactivation_work);
-            int ret = zmk_keymap_layer_deactivate(data->auto_mouse_layer);
-            if (ret == 0) {
-                data->auto_mouse_layer_active = false;
-                LOG_INF("Auto-mouse layer %d deactivated by key press", data->auto_mouse_layer);
+        // Check if auto-mouse layer should be deactivated
+        if (!data->auto_mouse_enabled || !data->auto_mouse_layer_active || 
+            data->auto_mouse_keep_active) {
+            continue;
+        }
+        
+        // Check if the auto-mouse layer has a non-transparent binding for this position
+        zmk_keymap_layer_id_t auto_mouse_layer_id = data->auto_mouse_layer;
+        const struct zmk_behavior_binding *auto_mouse_binding = 
+            zmk_keymap_get_layer_binding_at_idx(auto_mouse_layer_id, ev->position);
+        
+        // If auto-mouse layer has non-transparent binding, don't deactivate
+        if (auto_mouse_binding && 
+            strcmp(auto_mouse_binding->behavior_dev, "trans") != 0 &&
+            strcmp(auto_mouse_binding->behavior_dev, "TRANS") != 0) {
+            LOG_DBG("Auto-mouse layer has non-transparent binding at position %d, not deactivating", 
+                    ev->position);
+            continue;
+        }
+        
+        // Auto-mouse binding is transparent, check the resolved binding
+        // Find the highest active layer's non-transparent binding
+        const struct zmk_behavior_binding *resolved_binding = NULL;
+        
+        for (int layer_idx = ZMK_KEYMAP_LAYERS_LEN - 1; layer_idx >= 0; layer_idx--) {
+            zmk_keymap_layer_id_t layer_id = zmk_keymap_layer_index_to_id(layer_idx);
+            
+            if (layer_id == ZMK_KEYMAP_LAYER_ID_INVAL) {
+                continue;
             }
+            
+            if (!zmk_keymap_layer_active(layer_id)) {
+                continue;
+            }
+            
+            const struct zmk_behavior_binding *binding = 
+                zmk_keymap_get_layer_binding_at_idx(layer_id, ev->position);
+            
+            if (binding && 
+                strcmp(binding->behavior_dev, "trans") != 0 &&
+                strcmp(binding->behavior_dev, "TRANS") != 0) {
+                resolved_binding = binding;
+                break;
+            }
+        }
+        
+        // If resolved binding is &kp with a modifier keycode, don't deactivate
+        if (resolved_binding &&
+            (strcmp(resolved_binding->behavior_dev, "kp") == 0 ||
+             strcmp(resolved_binding->behavior_dev, "KEY_PRESS") == 0)) {
+            // The param1 contains the keycode for &kp behavior
+            uint32_t keycode_encoded = resolved_binding->param1;
+            uint16_t usage_page = ZMK_HID_USAGE_PAGE(keycode_encoded);
+            uint16_t usage_id = ZMK_HID_USAGE_ID(keycode_encoded);
+            
+            if (!usage_page) {
+                usage_page = HID_USAGE_KEY;
+            }
+            
+            if (is_mod(usage_page, usage_id)) {
+                LOG_DBG("Resolved binding is modifier &kp, not deactivating auto-mouse layer");
+                continue;
+            }
+        }
+        
+        // Deactivate the auto-mouse layer
+        LOG_DBG("Deactivating auto-mouse layer %d due to key press at position %d", 
+                data->auto_mouse_layer, ev->position);
+        k_work_cancel_delayable(&data->auto_mouse_deactivation_work);
+        int ret = zmk_keymap_layer_deactivate(data->auto_mouse_layer);
+        if (ret == 0) {
+            data->auto_mouse_layer_active = false;
+            LOG_INF("Auto-mouse layer %d deactivated by key press", data->auto_mouse_layer);
         }
     }
     
     return ZMK_EV_EVENT_BUBBLE;
 }
+
+ZMK_LISTENER(runtime_processor_keycode_listener, keycode_state_changed_listener);
+ZMK_SUBSCRIPTION(runtime_processor_keycode_listener, zmk_keycode_state_changed);
 
 ZMK_LISTENER(runtime_processor_position_listener, position_state_changed_listener);
 ZMK_SUBSCRIPTION(runtime_processor_position_listener, zmk_position_state_changed);
@@ -759,9 +844,8 @@ void zmk_input_processor_runtime_auto_mouse_keep_active(const struct device *dev
     
     LOG_DBG("Auto-mouse keep_active set to %d", keep_active);
     
-    // If releasing keep_active and layer is still active, schedule deactivation
+    // If releasing keep_active and layer is still active, deactivate immediately
     if (!keep_active && data->auto_mouse_enabled && data->auto_mouse_layer_active) {
-        k_work_reschedule(&data->auto_mouse_deactivation_work, 
-                         K_MSEC(data->auto_mouse_deactivation_delay_ms));
+        k_work_reschedule(&data->auto_mouse_deactivation_work, K_NO_WAIT);
     }
 }

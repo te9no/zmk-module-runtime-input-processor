@@ -19,8 +19,8 @@ struct zmk_input_processor_runtime_config {
     // Auto-mouse layer settings
     bool auto_mouse_enabled;
     uint8_t auto_mouse_layer;
-    uint32_t auto_mouse_activation_delay_ms;
-    uint32_t auto_mouse_deactivation_delay_ms;
+    uint16_t auto_mouse_activation_delay_ms;
+    uint16_t auto_mouse_deactivation_delay_ms;
 };
 
 /**
