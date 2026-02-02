@@ -687,29 +687,17 @@ static int position_state_changed_listener(const zmk_event_t *eh) {
         data->last_keypress_timestamp = now;
         
         // Deactivate auto-mouse layer if it's active
-        if (data->auto_mouse_enabled && data->auto_mouse_layer_active) {
-            // Check if the pressed key is transparent or none
-            // We need to get the binding for the current position
-            zmk_keymap_layer_index_t highest_layer = zmk_keymap_highest_layer_active();
-            const struct zmk_behavior_binding *binding = 
-                zmk_keymap_get_layer_binding_at_idx(highest_layer, ev->position);
-            
-            if (binding != NULL) {
-                const char *behavior_name = binding->behavior_dev;
-                // Check if it's transparent or none behavior
-                if (strcmp(behavior_name, "TRANS") == 0 || strcmp(behavior_name, "NONE") == 0 ||
-                    strcmp(behavior_name, "trans") == 0 || strcmp(behavior_name, "none") == 0) {
-                    // For trans/none, deactivate immediately
-                    LOG_DBG("Deactivating auto-mouse layer due to trans/none key press");
-                    k_work_cancel_delayable(&data->auto_mouse_deactivation_work);
-                    if (!data->auto_mouse_keep_active) {
-                        int ret = zmk_keymap_layer_deactivate(data->auto_mouse_layer);
-                        if (ret == 0) {
-                            data->auto_mouse_layer_active = false;
-                            LOG_INF("Auto-mouse layer %d deactivated by key press", data->auto_mouse_layer);
-                        }
-                    }
-                }
+        // Note: We deactivate on ANY key press. The layer should only be active
+        // when using the pointing device. If the user wants to keep it active,
+        // they should use the keep-active behavior.
+        if (data->auto_mouse_enabled && data->auto_mouse_layer_active && 
+            !data->auto_mouse_keep_active) {
+            LOG_DBG("Deactivating auto-mouse layer due to key press");
+            k_work_cancel_delayable(&data->auto_mouse_deactivation_work);
+            int ret = zmk_keymap_layer_deactivate(data->auto_mouse_layer);
+            if (ret == 0) {
+                data->auto_mouse_layer_active = false;
+                LOG_INF("Auto-mouse layer %d deactivated by key press", data->auto_mouse_layer);
             }
         }
     }

@@ -12,6 +12,7 @@ This ZMK module provides runtime configurable input processors for pointing devi
 - **Multiple Processors**: Support for multiple input processors with individual configuration
 - **Short Names**: Processor names limited to 8 characters for BLE efficiency
 - **Temporary Changes**: Hold a key to temporarily change settings (perfect for DPI toggle)
+- **Auto-Mouse Layer**: Automatically activate a layer when using pointing device, deactivate on key press or timeout
 
 ## Setup
 
@@ -165,6 +166,55 @@ When you press and hold a key with the temporary config behavior:
 1. Current settings are saved
 2. Temporary settings are applied
 3. When you release the key, original settings are restored
+
+### Auto-Mouse Layer
+
+The auto-mouse layer feature automatically activates a specified layer when you use your pointing device (trackpad, trackball, etc.) and deactivates it after a period of inactivity or when you press a key.
+
+**Configuration via Web UI:**
+
+Auto-mouse layer settings can be configured through the web interface:
+- **Enable/Disable**: Toggle the auto-mouse layer feature
+- **Target Layer**: The layer number to activate (e.g., layer 1, 2, etc.)
+- **Activation Delay**: Time to wait after input starts before activating the layer (milliseconds)
+- **Deactivation Delay**: Time to wait after input stops before deactivating the layer (milliseconds)
+
+**Behavior:**
+
+- When you move the pointing device, the layer activates after the activation delay
+- The layer stays active while you continue using the pointing device
+- When you press any keyboard key, the layer deactivates immediately
+- If you stop moving the pointing device, the layer deactivates after the deactivation delay
+- If a key press occurs before the activation delay expires, the layer won't activate
+
+**Keep Auto-Mouse Layer Active:**
+
+You can create a behavior to prevent the auto-mouse layer from deactivating while holding a key:
+
+```dts
+/ {
+    behaviors {
+        // Behavior to keep auto-mouse layer active
+        keep_mouse: keep_mouse {
+            compatible = "zmk,behavior-input-processor-auto-mouse-keep-active";
+            #binding-cells = <0>;
+            processor-name = "trackpad";  // Must match processor-label
+        };
+    };
+
+    keymap {
+        compatible = "zmk,keymap";
+        default_layer {
+            bindings = <
+                &keep_mouse  // Hold this key to keep auto-mouse layer active
+                // ... other keys
+            >;
+        };
+    };
+};
+```
+
+When holding the keep-active behavior key, the auto-mouse layer will not deactivate when you press other keys or after the timeout period.
 
 ## Development Guide
 

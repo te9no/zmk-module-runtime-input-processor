@@ -1,0 +1,21 @@
+# Copyright (c) 2026 The ZMK Contributors
+# SPDX-License-Identifier: MIT
+
+description: |
+  Behavior to keep auto-mouse layer active while a key is held.
+  When this behavior is pressed, it prevents the auto-mouse layer from
+  automatically deactivating. This is useful for keeping the mouse layer
+  active while performing complex mouse operations.
+
+compatible: "zmk,behavior-input-processor-auto-mouse-keep-active"
+
+include: [behavior.yaml]
+
+properties:
+  processor-name:
+    type: string
+    required: true
+    description: Name of the runtime input processor with auto-mouse enabled
+
+  "#binding-cells":
+    const: 0
