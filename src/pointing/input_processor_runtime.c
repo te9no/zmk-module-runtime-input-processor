@@ -19,6 +19,8 @@
 
 #include <zmk/event_manager.h>
 #include <zmk/events/input_processor_state_changed.h>
+#include <zmk/events/position_state_changed.h>
+#include <zmk/keymap.h>
 
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
@@ -58,6 +60,26 @@ struct runtime_processor_data {
     int16_t last_y;
     bool has_x;
     bool has_y;
+
+    // Auto-mouse layer settings
+    bool auto_mouse_enabled;
+    uint8_t auto_mouse_layer;
+    uint32_t auto_mouse_activation_delay_ms;
+    uint32_t auto_mouse_deactivation_delay_ms;
+    
+    // Persistent auto-mouse settings
+    bool persistent_auto_mouse_enabled;
+    uint8_t persistent_auto_mouse_layer;
+    uint32_t persistent_auto_mouse_activation_delay_ms;
+    uint32_t persistent_auto_mouse_deactivation_delay_ms;
+    
+    // Auto-mouse runtime state
+    struct k_work_delayable auto_mouse_activation_work;
+    struct k_work_delayable auto_mouse_deactivation_work;
+    bool auto_mouse_layer_active;
+    bool auto_mouse_keep_active;  // Set by behavior to prevent deactivation
+    int64_t last_input_timestamp;
+    int64_t last_keypress_timestamp;
 };
 
 static void update_rotation_values(struct runtime_processor_data *data) {
@@ -74,6 +96,45 @@ static void update_rotation_values(struct runtime_processor_data *data) {
 
     LOG_DBG("Rotation %d degrees: cos=%d, sin=%d", data->rotation_degrees,
             data->cos_val, data->sin_val);
+}
+
+// Auto-mouse layer work handlers
+static void auto_mouse_activation_work_handler(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct runtime_processor_data *data =
+        CONTAINER_OF(dwork, struct runtime_processor_data, auto_mouse_activation_work);
+    
+    if (!data->auto_mouse_enabled || data->auto_mouse_layer_active) {
+        return;
+    }
+    
+    // Activate the auto-mouse layer
+    int ret = zmk_keymap_layer_activate(data->auto_mouse_layer);
+    if (ret == 0) {
+        data->auto_mouse_layer_active = true;
+        LOG_INF("Auto-mouse layer %d activated", data->auto_mouse_layer);
+    } else {
+        LOG_ERR("Failed to activate auto-mouse layer %d: %d", data->auto_mouse_layer, ret);
+    }
+}
+
+static void auto_mouse_deactivation_work_handler(struct k_work *work) {
+    struct k_work_delayable *dwork = k_work_delayable_from_work(work);
+    struct runtime_processor_data *data =
+        CONTAINER_OF(dwork, struct runtime_processor_data, auto_mouse_deactivation_work);
+    
+    if (!data->auto_mouse_layer_active || data->auto_mouse_keep_active) {
+        return;
+    }
+    
+    // Deactivate the auto-mouse layer
+    int ret = zmk_keymap_layer_deactivate(data->auto_mouse_layer);
+    if (ret == 0) {
+        data->auto_mouse_layer_active = false;
+        LOG_INF("Auto-mouse layer %d deactivated", data->auto_mouse_layer);
+    } else {
+        LOG_ERR("Failed to deactivate auto-mouse layer %d: %d", data->auto_mouse_layer, ret);
+    }
 }
 
 static int code_idx(uint16_t code, const uint16_t *list, size_t len) {
@@ -129,6 +190,25 @@ static int runtime_processor_handle_event(
     bool is_x     = (x_idx >= 0);
     int16_t value = event->value;
 
+    // Handle auto-mouse layer activation
+    if (data->auto_mouse_enabled && event->value != 0) {
+        int64_t now = k_uptime_get();
+        data->last_input_timestamp = now;
+        
+        // Check if we should activate the layer
+        if (!data->auto_mouse_layer_active) {
+            // Only activate if no key press within activation delay window
+            if (data->last_keypress_timestamp == 0 || 
+                (now - data->last_keypress_timestamp) >= data->auto_mouse_activation_delay_ms) {
+                // Schedule activation
+                k_work_reschedule(&data->auto_mouse_activation_work, K_NO_WAIT);
+            }
+        }
+        
+        // Cancel any pending deactivation
+        k_work_cancel_delayable(&data->auto_mouse_deactivation_work);
+    }
+
     // Apply scaling first
     if (data->scale_multiplier > 0 && data->scale_divisor > 0) {
         scale_val(event, data->scale_multiplier, data->scale_divisor, state);
@@ -173,6 +253,12 @@ static int runtime_processor_handle_event(
             // applied on next pair)
         }
     }
+    
+    // Schedule deactivation after input stops
+    if (data->auto_mouse_enabled && data->auto_mouse_layer_active && !data->auto_mouse_keep_active) {
+        k_work_reschedule(&data->auto_mouse_deactivation_work, 
+                         K_MSEC(data->auto_mouse_deactivation_delay_ms));
+    }
 
     return ZMK_INPUT_PROC_CONTINUE;
 }
@@ -186,6 +272,10 @@ struct processor_settings {
     uint32_t scale_multiplier;
     uint32_t scale_divisor;
     int32_t rotation_degrees;
+    bool auto_mouse_enabled;
+    uint8_t auto_mouse_layer;
+    uint32_t auto_mouse_activation_delay_ms;
+    uint32_t auto_mouse_deactivation_delay_ms;
 };
 
 static void save_processor_settings_work_handler(struct k_work *work) {
@@ -199,6 +289,10 @@ static void save_processor_settings_work_handler(struct k_work *work) {
         .scale_multiplier = data->persistent_scale_multiplier,
         .scale_divisor    = data->persistent_scale_divisor,
         .rotation_degrees = data->persistent_rotation_degrees,
+        .auto_mouse_enabled = data->persistent_auto_mouse_enabled,
+        .auto_mouse_layer = data->persistent_auto_mouse_layer,
+        .auto_mouse_activation_delay_ms = data->persistent_auto_mouse_activation_delay_ms,
+        .auto_mouse_deactivation_delay_ms = data->persistent_auto_mouse_deactivation_delay_ms,
     };
 
     char path[64];
@@ -232,16 +326,25 @@ static int load_processor_settings_cb(const char *name, size_t len,
             data->persistent_scale_multiplier = settings.scale_multiplier;
             data->persistent_scale_divisor    = settings.scale_divisor;
             data->persistent_rotation_degrees = settings.rotation_degrees;
+            data->persistent_auto_mouse_enabled = settings.auto_mouse_enabled;
+            data->persistent_auto_mouse_layer = settings.auto_mouse_layer;
+            data->persistent_auto_mouse_activation_delay_ms = settings.auto_mouse_activation_delay_ms;
+            data->persistent_auto_mouse_deactivation_delay_ms = settings.auto_mouse_deactivation_delay_ms;
 
             // Apply to current values
             data->scale_multiplier = settings.scale_multiplier;
             data->scale_divisor    = settings.scale_divisor;
             data->rotation_degrees = settings.rotation_degrees;
+            data->auto_mouse_enabled = settings.auto_mouse_enabled;
+            data->auto_mouse_layer = settings.auto_mouse_layer;
+            data->auto_mouse_activation_delay_ms = settings.auto_mouse_activation_delay_ms;
+            data->auto_mouse_deactivation_delay_ms = settings.auto_mouse_deactivation_delay_ms;
             update_rotation_values(data);
 
-            LOG_INF("Loaded settings for %s: scale=%d/%d, rotation=%d",
+            LOG_INF("Loaded settings for %s: scale=%d/%d, rotation=%d, auto_mouse=%d",
                     cfg->name, settings.scale_multiplier,
-                    settings.scale_divisor, settings.rotation_degrees);
+                    settings.scale_divisor, settings.rotation_degrees,
+                    settings.auto_mouse_enabled);
             return 0;
         }
     }
@@ -276,6 +379,22 @@ static int runtime_processor_init(const struct device *dev) {
     data->last_x = 0;
     data->last_y = 0;
 
+    // Initialize auto-mouse settings (disabled by default)
+    data->auto_mouse_enabled = false;
+    data->auto_mouse_layer = 0;
+    data->auto_mouse_activation_delay_ms = 100;  // Default 100ms
+    data->auto_mouse_deactivation_delay_ms = 500;  // Default 500ms
+    data->persistent_auto_mouse_enabled = false;
+    data->persistent_auto_mouse_layer = 0;
+    data->persistent_auto_mouse_activation_delay_ms = 100;
+    data->persistent_auto_mouse_deactivation_delay_ms = 500;
+    
+    // Initialize auto-mouse runtime state
+    data->auto_mouse_layer_active = false;
+    data->auto_mouse_keep_active = false;
+    data->last_input_timestamp = 0;
+    data->last_keypress_timestamp = 0;
+
     update_rotation_values(data);
 
     data->dev = dev;
@@ -283,6 +402,12 @@ static int runtime_processor_init(const struct device *dev) {
     k_work_init_delayable(&data->save_work,
                           save_processor_settings_work_handler);
 #endif
+    // Initialize auto-mouse work queues
+    k_work_init_delayable(&data->auto_mouse_activation_work,
+                          auto_mouse_activation_work_handler);
+    k_work_init_delayable(&data->auto_mouse_deactivation_work,
+                          auto_mouse_deactivation_work_handler);
+    
     LOG_INF("Runtime processor '%s' initialized", cfg->name);
 
     return 0;
@@ -386,6 +511,22 @@ int zmk_input_processor_runtime_reset(const struct device *dev) {
     data->persistent_scale_divisor    = cfg->initial_scale_divisor;
     data->persistent_rotation_degrees = cfg->initial_rotation_degrees;
 
+    // Reset auto-mouse settings to defaults
+    data->auto_mouse_enabled = false;
+    data->auto_mouse_layer = 0;
+    data->auto_mouse_activation_delay_ms = 100;
+    data->auto_mouse_deactivation_delay_ms = 500;
+    data->persistent_auto_mouse_enabled = false;
+    data->persistent_auto_mouse_layer = 0;
+    data->persistent_auto_mouse_activation_delay_ms = 100;
+    data->persistent_auto_mouse_deactivation_delay_ms = 500;
+    
+    // Deactivate auto-mouse layer if active
+    if (data->auto_mouse_layer_active) {
+        zmk_keymap_layer_deactivate(data->auto_mouse_layer);
+        data->auto_mouse_layer_active = false;
+    }
+
     update_rotation_values(data);
 
     LOG_INF("Reset processor '%s' to defaults", cfg->name);
@@ -433,6 +574,10 @@ int zmk_input_processor_runtime_get_config(
         config->scale_multiplier = data->scale_multiplier;
         config->scale_divisor    = data->scale_divisor;
         config->rotation_degrees = data->rotation_degrees;
+        config->auto_mouse_enabled = data->auto_mouse_enabled;
+        config->auto_mouse_layer = data->auto_mouse_layer;
+        config->auto_mouse_activation_delay_ms = data->auto_mouse_activation_delay_ms;
+        config->auto_mouse_deactivation_delay_ms = data->auto_mouse_deactivation_delay_ms;
     }
 
     return 0;
@@ -521,3 +666,114 @@ static int runtime_processor_settings_load_cb(const char *name, size_t len,
 }
 
 #endif
+
+// Event listener for detecting key presses (for auto-mouse layer deactivation)
+static int position_state_changed_listener(const zmk_event_t *eh) {
+    const struct zmk_position_state_changed *ev = as_zmk_position_state_changed(eh);
+    if (ev == NULL) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    
+    // Only handle key presses
+    if (!ev->state) {
+        return ZMK_EV_EVENT_BUBBLE;
+    }
+    
+    // Update last keypress timestamp for all processors
+    int64_t now = k_uptime_get();
+    for (size_t i = 0; i < runtime_processors_count; i++) {
+        const struct device *dev = runtime_processors[i];
+        struct runtime_processor_data *data = dev->data;
+        data->last_keypress_timestamp = now;
+        
+        // Deactivate auto-mouse layer if it's active
+        if (data->auto_mouse_enabled && data->auto_mouse_layer_active) {
+            // Check if the pressed key is transparent or none
+            // We need to get the binding for the current position
+            zmk_keymap_layer_index_t highest_layer = zmk_keymap_highest_layer_active();
+            const struct zmk_behavior_binding *binding = 
+                zmk_keymap_get_layer_binding_at_idx(highest_layer, ev->position);
+            
+            if (binding != NULL) {
+                const char *behavior_name = binding->behavior_dev;
+                // Check if it's transparent or none behavior
+                if (strcmp(behavior_name, "TRANS") == 0 || strcmp(behavior_name, "NONE") == 0 ||
+                    strcmp(behavior_name, "trans") == 0 || strcmp(behavior_name, "none") == 0) {
+                    // For trans/none, deactivate immediately
+                    LOG_DBG("Deactivating auto-mouse layer due to trans/none key press");
+                    k_work_cancel_delayable(&data->auto_mouse_deactivation_work);
+                    if (!data->auto_mouse_keep_active) {
+                        int ret = zmk_keymap_layer_deactivate(data->auto_mouse_layer);
+                        if (ret == 0) {
+                            data->auto_mouse_layer_active = false;
+                            LOG_INF("Auto-mouse layer %d deactivated by key press", data->auto_mouse_layer);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    return ZMK_EV_EVENT_BUBBLE;
+}
+
+ZMK_LISTENER(runtime_processor_position_listener, position_state_changed_listener);
+ZMK_SUBSCRIPTION(runtime_processor_position_listener, zmk_position_state_changed);
+
+// Auto-mouse layer configuration API
+int zmk_input_processor_runtime_set_auto_mouse(const struct device *dev,
+                                               bool enabled,
+                                               uint8_t layer,
+                                               uint32_t activation_delay_ms,
+                                               uint32_t deactivation_delay_ms,
+                                               bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    
+    data->auto_mouse_enabled = enabled;
+    data->auto_mouse_layer = layer;
+    data->auto_mouse_activation_delay_ms = activation_delay_ms;
+    data->auto_mouse_deactivation_delay_ms = deactivation_delay_ms;
+    
+    if (persistent) {
+        data->persistent_auto_mouse_enabled = enabled;
+        data->persistent_auto_mouse_layer = layer;
+        data->persistent_auto_mouse_activation_delay_ms = activation_delay_ms;
+        data->persistent_auto_mouse_deactivation_delay_ms = deactivation_delay_ms;
+    }
+    
+    LOG_INF("Auto-mouse layer config: enabled=%d, layer=%d, act_delay=%d, deact_delay=%d%s",
+            enabled, layer, activation_delay_ms, deactivation_delay_ms,
+            persistent ? " (persistent)" : " (temporary)");
+    
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        // Raise event for persistent changes
+        raise_state_changed_event(dev);
+    }
+#endif
+    
+    return ret;
+}
+
+void zmk_input_processor_runtime_auto_mouse_keep_active(const struct device *dev, bool keep_active) {
+    if (!dev) {
+        return;
+    }
+    
+    struct runtime_processor_data *data = dev->data;
+    data->auto_mouse_keep_active = keep_active;
+    
+    LOG_DBG("Auto-mouse keep_active set to %d", keep_active);
+    
+    // If releasing keep_active and layer is still active, schedule deactivation
+    if (!keep_active && data->auto_mouse_enabled && data->auto_mouse_layer_active) {
+        k_work_reschedule(&data->auto_mouse_deactivation_work, 
+                         K_MSEC(data->auto_mouse_deactivation_delay_ms));
+    }
+}

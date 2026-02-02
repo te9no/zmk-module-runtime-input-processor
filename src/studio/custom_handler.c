@@ -51,6 +51,8 @@ static int handle_set_rotation(const cormoran_rip_SetRotationRequest *req,
 static int handle_reset_input_processor(
     const cormoran_rip_ResetInputProcessorRequest *req,
     cormoran_rip_Response *resp);
+static int handle_set_auto_mouse(const cormoran_rip_SetAutoMouseRequest *req,
+                                 cormoran_rip_Response *resp);
 
 /**
  * Main request handler for the custom RPC subsystem.
@@ -99,6 +101,9 @@ static bool rip_rpc_handle_request(const zmk_custom_CallRequest *raw_request,
         case cormoran_rip_Request_reset_input_processor_tag:
             rc = handle_reset_input_processor(
                 &req.request_type.reset_input_processor, resp);
+            break;
+        case cormoran_rip_Request_set_auto_mouse_tag:
+            rc = handle_set_auto_mouse(&req.request_type.set_auto_mouse, resp);
             break;
         default:
             LOG_WRN("Unsupported rip request type: %d", req.which_request_type);
@@ -193,6 +198,10 @@ static int handle_get_input_processor(
     result.processor.scale_multiplier = config.scale_multiplier;
     result.processor.scale_divisor    = config.scale_divisor;
     result.processor.rotation_degrees = config.rotation_degrees;
+    result.processor.auto_mouse_enabled = config.auto_mouse_enabled;
+    result.processor.auto_mouse_layer = config.auto_mouse_layer;
+    result.processor.auto_mouse_activation_delay_ms = config.auto_mouse_activation_delay_ms;
+    result.processor.auto_mouse_deactivation_delay_ms = config.auto_mouse_deactivation_delay_ms;
 
     resp->which_response_type = cormoran_rip_Response_get_input_processor_tag;
     resp->response_type.get_input_processor = result;
@@ -342,6 +351,44 @@ static int handle_reset_input_processor(
     resp->response_type.reset_input_processor =
         (cormoran_rip_ResetInputProcessorResponse)
             cormoran_rip_ResetInputProcessorResponse_init_zero;
+
+    return 0;
+}
+
+/**
+ * Handle setting auto-mouse layer configuration
+ */
+static int handle_set_auto_mouse(const cormoran_rip_SetAutoMouseRequest *req,
+                                 cormoran_rip_Response *resp) {
+    LOG_DBG("Setting auto-mouse for %s: enabled=%d, layer=%d, act_delay=%d, deact_delay=%d",
+            req->name, req->enabled, req->layer, 
+            req->activation_delay_ms, req->deactivation_delay_ms);
+
+    const struct device *dev =
+        zmk_input_processor_runtime_find_by_name(req->name);
+    if (!dev) {
+        LOG_WRN("Input processor not found: %s", req->name);
+        return -ENODEV;
+    }
+
+    // Set auto-mouse configuration (persistent)
+    int ret = zmk_input_processor_runtime_set_auto_mouse(dev, req->enabled, 
+                                                         req->layer,
+                                                         req->activation_delay_ms,
+                                                         req->deactivation_delay_ms,
+                                                         true);
+    if (ret < 0) {
+        LOG_ERR("Failed to set auto-mouse: %d", ret);
+        return ret;
+    }
+
+    // Event will be raised by listener
+
+    // Return empty response
+    resp->which_response_type = cormoran_rip_Response_set_auto_mouse_tag;
+    resp->response_type.set_auto_mouse =
+        (cormoran_rip_SetAutoMouseResponse)
+            cormoran_rip_SetAutoMouseResponse_init_zero;
 
     return 0;
 }

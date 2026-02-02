@@ -16,6 +16,11 @@ struct zmk_input_processor_runtime_config {
     uint32_t scale_multiplier;
     uint32_t scale_divisor;
     int32_t rotation_degrees;
+    // Auto-mouse layer settings
+    bool auto_mouse_enabled;
+    uint8_t auto_mouse_layer;
+    uint32_t auto_mouse_activation_delay_ms;
+    uint32_t auto_mouse_deactivation_delay_ms;
 };
 
 /**
@@ -87,3 +92,29 @@ const struct device *zmk_input_processor_runtime_find_by_name(const char *name);
  */
 int zmk_input_processor_runtime_foreach(int (*callback)(const struct device *dev, void *user_data),
                                        void *user_data);
+
+/**
+ * @brief Set auto-mouse layer configuration
+ *
+ * @param dev Pointer to the device structure
+ * @param enabled Whether auto-mouse is enabled
+ * @param layer Target layer ID for auto-mouse
+ * @param activation_delay_ms Delay before activating layer after input starts (ms)
+ * @param deactivation_delay_ms Delay before deactivating layer after input stops (ms)
+ * @param persistent If true, save to persistent storage; if false, temporary
+ * @return 0 on success, negative error code on failure
+ */
+int zmk_input_processor_runtime_set_auto_mouse(const struct device *dev,
+                                               bool enabled,
+                                               uint8_t layer,
+                                               uint32_t activation_delay_ms,
+                                               uint32_t deactivation_delay_ms,
+                                               bool persistent);
+
+/**
+ * @brief Notify auto-mouse to keep the layer active (called by behavior)
+ *
+ * @param dev Pointer to the device structure
+ * @param keep_active If true, prevent auto-mouse from deactivating; if false, allow deactivation
+ */
+void zmk_input_processor_runtime_auto_mouse_keep_active(const struct device *dev, bool keep_active);

@@ -9,6 +9,11 @@ message InputProcessorInfo {
     uint32 scale_divisor =
         3;  // Scaling divisor (multiply by scale_multiplier/scale_divisor)
     int32 rotation_degrees = 4;  // Rotation angle in degrees
+    // Auto-mouse layer settings
+    bool auto_mouse_enabled = 5;  // Whether auto-mouse is enabled
+    uint32 auto_mouse_layer = 6;  // Target layer ID for auto-mouse
+    uint32 auto_mouse_activation_delay_ms = 7;  // Delay before activating (ms)
+    uint32 auto_mouse_deactivation_delay_ms = 8;  // Delay before deactivating (ms)
 }
 
 message ListInputProcessorsRequest {
@@ -46,6 +51,14 @@ message ResetInputProcessorRequest {
     string name = 1;  // Name of the input processor to reset
 }
 
+message SetAutoMouseRequest {
+    string name = 1;  // Name of the input processor to update
+    bool enabled = 2;  // Whether auto-mouse is enabled
+    uint32 layer = 3;  // Target layer ID for auto-mouse
+    uint32 activation_delay_ms = 4;  // Delay before activating (ms)
+    uint32 deactivation_delay_ms = 5;  // Delay before deactivating (ms)
+}
+
 message SetScaleMultiplierResponse {
     // Empty - use notification to report changes
 }
@@ -62,6 +75,10 @@ message ResetInputProcessorResponse {
     // Empty - use notification to report changes
 }
 
+message SetAutoMouseResponse {
+    // Empty - use notification to report changes
+}
+
 message Request {
     oneof request_type {
         ListInputProcessorsRequest list_input_processors = 1;
@@ -70,6 +87,7 @@ message Request {
         SetScaleDivisorRequest set_scale_divisor         = 4;
         SetRotationRequest set_rotation                  = 5;
         ResetInputProcessorRequest reset_input_processor = 6;
+        SetAutoMouseRequest set_auto_mouse               = 7;
     }
 }
 
@@ -86,6 +104,7 @@ message Response {
         SetScaleDivisorResponse set_scale_divisor         = 5;
         SetRotationResponse set_rotation                  = 6;
         ResetInputProcessorResponse reset_input_processor = 7;
+        SetAutoMouseResponse set_auto_mouse               = 8;
     }
 }
 
