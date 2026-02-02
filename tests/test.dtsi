@@ -34,15 +34,25 @@
 		
 		#input-processor-cells = <0>;
 	};
+	
+	auto_mouse_layer_processor: auto_mouse_layer_processor {
+		compatible = "zmk,input-processor-auto-mouse-layer";
+		layer = <1>;
+		require-prior-idle-ms = <150>;
+		time-to-max-ms = <600>;
+		
+		#input-processor-cells = <0>;
+	};
 };
 
 #include <dt-bindings/zmk/keys.h>
 #include <behaviors.dtsi>
 #include <dt-bindings/zmk/kscan_mock.h>
 #include <behaviors/runtime-input-processors.dtsi>
+#include <behaviors/auto-mouse-layer.dtsi>
 
 &mmv_input_listener {
-	input-processors = <&runtime_input_processor>;
+	input-processors = <&runtime_input_processor &auto_mouse_layer_processor>;
 };
 
 / {
@@ -55,6 +65,15 @@
 			&hdpi
 			&ldpi
 			&mmv MOVE_RIGHT
+			>;
+		};
+		
+		mouse_layer {
+			bindings = <
+			&amlka
+			&trans
+			&trans
+			&none
 			>;
 		};
 	};

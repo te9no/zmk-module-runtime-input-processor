@@ -116,17 +116,15 @@ static int handle_position_state_changed(const struct device *dev, const zmk_eve
             zmk_keymap_get_layer_binding_at_idx(cfg->layer, ev->position);
         
         if (binding) {
-            const struct device *behavior_dev = zmk_behavior_get_binding(binding->behavior_dev);
-            if (behavior_dev) {
-                const char *behavior_name = behavior_dev->name;
-                
-                // Check if it's trans or none behavior
-                if (strcmp(behavior_name, "TRANS") == 0 || 
-                    strcmp(behavior_name, "NONE") == 0) {
-                    LOG_DBG("Trans/None key pressed, deactivating auto mouse layer");
-                    update_layer_state(data, cfg, false);
-                    k_work_cancel_delayable(&data->deactivate_work);
-                }
+            const char *behavior_name = binding->behavior_dev;
+            
+            // Check if it's trans or none behavior
+            if (strcmp(behavior_name, "trans") == 0 || 
+                strcmp(behavior_name, "none") == 0) {
+                LOG_DBG("Trans/None key pressed at position %d, deactivating auto mouse layer", 
+                        ev->position);
+                update_layer_state(data, cfg, false);
+                k_work_cancel_delayable(&data->deactivate_work);
             }
         }
     }
