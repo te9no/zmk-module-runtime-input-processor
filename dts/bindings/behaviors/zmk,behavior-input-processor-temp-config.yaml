@@ -7,7 +7,7 @@ description: |
 
 compatible: "zmk,behavior-input-processor-temp-config"
 
-include: [behavior.yaml]
+include: zero_param.yaml
 
 properties:
   processor-name:
@@ -26,6 +26,3 @@ properties:
   rotation-degrees:
     type: int
     description: Temporary rotation angle in degrees (0 = no change)
-
-  "#binding-cells":
-    const: 0

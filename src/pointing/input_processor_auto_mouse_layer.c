@@ -175,8 +175,8 @@ static int auto_mouse_layer_handle_event(const struct device *dev,
     struct auto_mouse_layer_data *data = dev->data;
     const struct auto_mouse_layer_config *cfg = dev->config;
 
-    // Ignore sync events and events with zero value
-    if (event->type == INPUT_EV_SYN || event->value == 0) {
+    // Ignore events with zero value (no actual movement)
+    if (event->value == 0) {
         return ZMK_INPUT_PROC_CONTINUE;
     }
 

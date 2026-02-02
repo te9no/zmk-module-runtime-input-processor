@@ -8,8 +8,4 @@ description: |
 
 compatible: "zmk,behavior-auto-mouse-layer-keep-active"
 
-include: behavior.yaml
-
-properties:
-  "#binding-cells":
-    const: 0
+include: zero_param.yaml

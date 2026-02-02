@@ -7,7 +7,7 @@ description: |
 
 compatible: "zmk,input-processor-auto-mouse-layer"
 
-include: base.yaml
+include: ip_zero_param.yaml
 
 properties:
   layer:
@@ -30,6 +30,3 @@ properties:
     description: |
       Time in milliseconds to wait after pointer input stops before deactivating 
       the layer. Set to 0 to disable automatic deactivation.
-
-  "#input-processor-cells":
-    const: 0
