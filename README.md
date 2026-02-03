@@ -91,6 +91,13 @@ CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC=y
 		rotation-degrees = <0>;
 		track-remainders;
 
+		// Optional: Auto-mouse layer default settings
+		auto-mouse-enabled;  // Enable auto-mouse by default
+		auto-mouse-layer = <1>;  // Default to layer 1
+		auto-mouse-activation-delay-ms = <100>;  // 100ms activation delay
+		auto-mouse-deactivation-delay-ms = <500>;  // 500ms deactivation delay
+
+		// Optional: Performance optimization
 		auto-mouse-transparent-behavior = <&trans>;
 		auto-mouse-kp-behavior = <&kp>;
 		auto-mouse-keep-keycodes = <LEFT_CONTROL LEFT_SHIFT LEFT_ALT LEFT_GUI RIGHT_CONTROL RIGHT_SHIFT RIGHT_ALT RIGHT_GUI>;
@@ -179,9 +186,27 @@ When you press and hold a key with the temporary config behavior:
 
 The auto-mouse layer feature automatically activates a specified layer when you use your pointing device (trackpad, trackball, etc.) and deactivates it after a period of inactivity or when you press a key.
 
+**Configuration via Device Tree (Optional):**
+
+You can configure default auto-mouse settings in your device tree:
+
+```dts
+my_pointer_processor: my_pointer_processor {
+    compatible = "zmk,input-processor-runtime";
+    processor-label = "trackpad";
+    // ... basic config ...
+    
+    // Enable auto-mouse with default settings
+    auto-mouse-enabled;  // Boolean property - presence enables it
+    auto-mouse-layer = <1>;  // Target layer (default: 0)
+    auto-mouse-activation-delay-ms = <100>;  // Activation delay (default: 100)
+    auto-mouse-deactivation-delay-ms = <500>;  // Deactivation delay (default: 500)
+};
+```
+
 **Configuration via Web UI:**
 
-Auto-mouse layer settings can be configured through the web interface:
+Auto-mouse layer settings can also be configured through the web interface:
 
 - **Enable/Disable**: Toggle the auto-mouse layer feature
 - **Target Layer**: The layer number to activate (e.g., layer 1, 2, etc.)

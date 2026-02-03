@@ -52,8 +52,8 @@
 		default_layer {
 			bindings = <
 			&mmv MOVE_UP
-			&hdpi
-			&ldpi
+			&rip_hdpi
+			&rip_ldpi
 			&mmv MOVE_RIGHT
 			>;
 		};

@@ -43,6 +43,11 @@ struct runtime_processor_config {
     const struct device *auto_mouse_kp_behavior;
     size_t auto_mouse_keep_keycodes_len;
     const uint16_t *auto_mouse_keep_keycodes;
+    // Auto-mouse default settings from DT
+    bool initial_auto_mouse_enabled;
+    uint8_t initial_auto_mouse_layer;
+    uint16_t initial_auto_mouse_activation_delay_ms;
+    uint16_t initial_auto_mouse_deactivation_delay_ms;
 };
 
 struct runtime_processor_data {
@@ -385,15 +390,15 @@ static int runtime_processor_init(const struct device *dev) {
     data->last_x = 0;
     data->last_y = 0;
 
-    // Initialize auto-mouse settings (disabled by default)
-    data->auto_mouse_enabled = false;
-    data->auto_mouse_layer = 0;
-    data->auto_mouse_activation_delay_ms = 100;  // Default 100ms
-    data->auto_mouse_deactivation_delay_ms = 500;  // Default 500ms
-    data->persistent_auto_mouse_enabled = false;
-    data->persistent_auto_mouse_layer = 0;
-    data->persistent_auto_mouse_activation_delay_ms = 100;
-    data->persistent_auto_mouse_deactivation_delay_ms = 500;
+    // Initialize auto-mouse settings from DT defaults
+    data->auto_mouse_enabled = cfg->initial_auto_mouse_enabled;
+    data->auto_mouse_layer = cfg->initial_auto_mouse_layer;
+    data->auto_mouse_activation_delay_ms = cfg->initial_auto_mouse_activation_delay_ms;
+    data->auto_mouse_deactivation_delay_ms = cfg->initial_auto_mouse_deactivation_delay_ms;
+    data->persistent_auto_mouse_enabled = cfg->initial_auto_mouse_enabled;
+    data->persistent_auto_mouse_layer = cfg->initial_auto_mouse_layer;
+    data->persistent_auto_mouse_activation_delay_ms = cfg->initial_auto_mouse_activation_delay_ms;
+    data->persistent_auto_mouse_deactivation_delay_ms = cfg->initial_auto_mouse_deactivation_delay_ms;
     
     // Initialize auto-mouse runtime state
     data->auto_mouse_layer_active = false;
@@ -622,6 +627,10 @@ int zmk_input_processor_runtime_get_config(
         .auto_mouse_keep_keycodes = COND_CODE_1(                               \
             DT_INST_NODE_HAS_PROP(n, auto_mouse_keep_keycodes),                \
             (runtime_auto_mouse_keep_keycodes_##n), (NULL)),                   \
+        .initial_auto_mouse_enabled = DT_INST_NODE_HAS_PROP(n, auto_mouse_enabled), \
+        .initial_auto_mouse_layer = DT_INST_PROP_OR(n, auto_mouse_layer, 0),  \
+        .initial_auto_mouse_activation_delay_ms = DT_INST_PROP_OR(n, auto_mouse_activation_delay_ms, 100), \
+        .initial_auto_mouse_deactivation_delay_ms = DT_INST_PROP_OR(n, auto_mouse_deactivation_delay_ms, 500), \
     };                                                                         \
     static struct runtime_processor_data runtime_data_##n;                     \
     DEVICE_DT_INST_DEFINE(n, &runtime_processor_init, NULL, &runtime_data_##n, \
