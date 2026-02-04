@@ -73,7 +73,7 @@ properties:
     type: boolean
     description: If present, temp-layer layer is enabled by default
 
-  temp-layer-layer:
+  temp-layer:
     type: int
     default: 0
     description: Default target layer ID for temp-layer

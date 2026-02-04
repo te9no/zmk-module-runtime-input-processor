@@ -480,9 +480,9 @@ export function InputProcessorManager() {
           {tempLayerEnabled && (
             <>
               <div className="input-group">
-                <label htmlFor="temp-layer-layer">Target Layer:</label>
+                <label htmlFor="temp-layer">Target Layer:</label>
                 <input
-                  id="temp-layer-layer"
+                  id="temp-layer"
                   type="number"
                   min="0"
                   max="15"

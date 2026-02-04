@@ -93,7 +93,7 @@ CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC=y
 
 		// Optional: Temp-layer layer default settings
 		temp-layer-enabled;  // Enable temp-layer by default
-		temp-layer-layer = <1>;  // Default to layer 1
+		temp-layer = <1>;  // Default to layer 1
 		temp-layer-activation-delay-ms = <100>;  // 100ms activation delay
 		temp-layer-deactivation-delay-ms = <500>;  // 500ms deactivation delay
 
@@ -195,10 +195,10 @@ my_pointer_processor: my_pointer_processor {
     compatible = "zmk,input-processor-runtime";
     processor-label = "trackpad";
     // ... basic config ...
-    
+
     // Enable temp-layer with default settings
     temp-layer-enabled;  // Boolean property - presence enables it
-    temp-layer-layer = <1>;  // Target layer (default: 0)
+    temp-layer = <1>;  // Target layer (default: 0)
     temp-layer-activation-delay-ms = <100>;  // Activation delay (default: 100)
     temp-layer-deactivation-delay-ms = <500>;  // Deactivation delay (default: 500)
 };
