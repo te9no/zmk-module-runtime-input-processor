@@ -439,7 +439,10 @@ export function InputProcessorManager() {
 
       {selectedProcessorId !== null && (
         <section className="card">
-          <h2>Configure: {processors.find(p => p.id === selectedProcessorId)?.name}</h2>
+          <h2>
+            Configure:{" "}
+            {processors.find((p) => p.id === selectedProcessorId)?.name}
+          </h2>
 
           <div className="input-group">
             <label htmlFor="scale-multiplier">Scaling Multiplier:</label>
