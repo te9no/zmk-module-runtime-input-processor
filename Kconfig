@@ -7,4 +7,8 @@ config ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC
     bool "Enable runtime input processor custom Studio RPC"
     depends on ZMK_STUDIO
 
+config ZMK_RUNTIME_INPUT_PROCESSOR_NAME_MAX_LEN
+    int "Maximum length of runtime input processor names"
+    default 8
+
 endif

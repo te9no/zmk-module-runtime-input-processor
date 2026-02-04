@@ -12,6 +12,7 @@ This ZMK module provides runtime configurable input processors for pointing devi
 - **Multiple Processors**: Support for multiple input processors with individual configuration
 - **Short Names**: Processor names limited to 8 characters for BLE efficiency
 - **Temporary Changes**: Hold a key to temporarily change settings (perfect for DPI toggle)
+- **Temp-Layer Layer**: Automatically activate a layer when using pointing device, deactivate on key press or timeout
 
 ## Setup
 
@@ -37,6 +38,8 @@ manifest:
 ### 2. Enable the feature in your `config/<shield>.conf`
 
 ```conf
+CONFIG_ZMK_POINTING=y
+
 # Enable runtime input processor
 CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR=y
 
@@ -49,24 +52,22 @@ CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC=y
 
 ```dts
 #include <dt-bindings/zmk/input.h>
+#include <input/processors.dtsi>
+#include <input/processors/runtime-input-processor.dtsi>
+// The .dtsi provides default device definitions
+// - mouse_runtime_input_processor
+// - scroll_runtime_input_processor
 
 / {
-    my_pointer_processor: my_pointer_processor {
-        compatible = "zmk,input-processor-runtime";
-        processor-label = "trackpad";  // Short name (max 8 chars)
-        type = <INPUT_EV_REL>;
-        x-codes = <INPUT_REL_X>;
-        y-codes = <INPUT_REL_Y>;
-        scale-multiplier = <1>;
-        scale-divisor = <1>;
-        rotation-degrees = <0>;
-        track-remainders;
-    };
-
     // Then use it in your input device configuration
     my_input_listener {
         // ... other config ...
-        input-processors = <&my_pointer_processor>;
+        input-processors = <&mouse_runtime_input_processor>;
+
+        scroller {
+			// layers = <9>;
+			input-processors = <&zip_xy_to_scroll_mapper &scroll_runtime_input_processor>;
+		};
     };
 
     // For split keyboard, you can configure input processor in central
@@ -78,12 +79,37 @@ CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC=y
         status = <disabled>;
         device = <&split_input>;
     };
+
+    my_rip: my_rip {
+		compatible = "zmk,input-processor-runtime";
+		processor-label = "custom";
+		type = <INPUT_EV_REL>;
+		x-codes = <INPUT_REL_X>;
+		y-codes = <INPUT_REL_Y>;
+		scale-multiplier = <1>;
+		scale-divisor = <1>;
+		rotation-degrees = <0>;
+		track-remainders;
+
+		// Optional: Temp-layer layer default settings
+		temp-layer-enabled;  // Enable temp-layer by default
+		temp-layer = <1>;  // Default to layer 1
+		temp-layer-activation-delay-ms = <100>;  // 100ms activation delay
+		temp-layer-deactivation-delay-ms = <500>;  // 500ms deactivation delay
+
+		// Optional: Performance optimization
+		temp-layer-transparent-behavior = <&trans>;
+		temp-layer-kp-behavior = <&kp>;
+		temp-layer-keep-keycodes = <LEFT_CONTROL LEFT_SHIFT LEFT_ALT LEFT_GUI RIGHT_CONTROL RIGHT_SHIFT RIGHT_ALT RIGHT_GUI>;
+
+		#input-processor-cells = <0>;
+	};
 };
 
 // <central>.overlay
 &split_listener {
     status = "okay";
-    input-processors = <&my_pointer_processor>;
+    input-processors = <&my_rip>;
 };
 ```
 
@@ -125,39 +151,29 @@ scale-divisor = 2
 You can temporarily change input processor settings while holding a key, useful for temporary DPI changes:
 
 ```dts
+#include <behaviors/runtime-input-processor.dtsi>
 / {
-    behaviors {
-        // Behavior to temporarily double the pointer speed
-        temp_fast: temp_fast {
-            compatible = "zmk,behavior-input-processor-temp-config";
-            #binding-cells = <0>;
-            processor-name = "trackpad";  // Must match processor-label
-            scale-multiplier = <2>;
-            scale-divisor = <1>;
-        };
 
-        // Behavior to temporarily halve the pointer speed
-        temp_slow: temp_slow {
-            compatible = "zmk,behavior-input-processor-temp-config";
-            #binding-cells = <0>;
-            processor-name = "trackpad";
-            scale-multiplier = <1>;
-            scale-divisor = <2>;
-        };
-    };
 
     keymap {
         compatible = "zmk,keymap";
         default_layer {
             bindings = <
                 // Use &temp_fast in your keymap
-                &temp_fast  // Hold this key for 2x speed
-                &temp_slow  // Hold this key for 0.5x speed
+                &hdpi  // Hold this key for 1.5x mouse speed
+                &ldpi  // Hold this key for 0.5x mouse speed
+                &hscr  // High scroll speed
+                &lscr  // Low scroll speed
                 // ... other keys
             >;
         };
     };
 };
+// Customization
+&hdpi {
+    scale-multiplier = <3>;
+	scale-divisor = <2>;
+}
 ```
 
 When you press and hold a key with the temporary config behavior:
@@ -165,6 +181,68 @@ When you press and hold a key with the temporary config behavior:
 1. Current settings are saved
 2. Temporary settings are applied
 3. When you release the key, original settings are restored
+
+### Temp-Layer Layer
+
+The temp-layer layer feature automatically activates a specified layer when you use your pointing device (trackpad, trackball, etc.) and deactivates it after a period of inactivity or when you press a key.
+
+**Configuration via Device Tree (Optional):**
+
+You can configure default temp-layer settings in your device tree:
+
+```dts
+my_pointer_processor: my_pointer_processor {
+    compatible = "zmk,input-processor-runtime";
+    processor-label = "trackpad";
+    // ... basic config ...
+
+    // Enable temp-layer with default settings
+    temp-layer-enabled;  // Boolean property - presence enables it
+    temp-layer = <1>;  // Target layer (default: 0)
+    temp-layer-activation-delay-ms = <100>;  // Activation delay (default: 100)
+    temp-layer-deactivation-delay-ms = <500>;  // Deactivation delay (default: 500)
+};
+```
+
+**Configuration via Web UI:**
+
+Temp-layer layer settings can also be configured through the web interface:
+
+- **Enable/Disable**: Toggle the temp-layer layer feature
+- **Target Layer**: The layer number to activate (e.g., layer 1, 2, etc.)
+- **Activation Delay**: Time to wait after input starts before activating the layer (milliseconds)
+- **Deactivation Delay**: Time to wait after input stops before deactivating the layer (milliseconds)
+
+**Behavior:**
+
+- When you move the pointing device, the layer activates after the activation delay
+- The layer stays active while you continue using the pointing device
+- When you press any keyboard key, the layer deactivates immediately (unless it's a modifier or the key is on the temp-layer layer)
+- If you stop moving the pointing device, the layer deactivates after the deactivation delay
+- If a key press occurs before the activation delay expires, the layer won't activate
+
+**Keep Temp-Layer Layer Active:**
+
+You can create a behavior to prevent the temp-layer layer from deactivating while holding a key:
+
+```dts
+#include <behaviors/runtime-input-processor.dtsi>
+
+/ {
+    keymap {
+        compatible = "zmk,keymap";
+        default_layer {
+            bindings = <
+                // temp-layer keep active
+                &amka  // Hold this key to keep temp-layer layer active
+                // ... other keys
+            >;
+        };
+    };
+};
+```
+
+When holding the keep-active behavior key, the temp-layer layer will not deactivate when you press other keys or after the timeout period.
 
 ## Development Guide
 

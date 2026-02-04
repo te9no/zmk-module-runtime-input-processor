@@ -16,6 +16,11 @@ struct zmk_input_processor_runtime_config {
     uint32_t scale_multiplier;
     uint32_t scale_divisor;
     int32_t rotation_degrees;
+    // Temp-layer layer settings
+    bool temp_layer_enabled;
+    uint8_t temp_layer_layer;
+    uint16_t temp_layer_activation_delay_ms;
+    uint16_t temp_layer_deactivation_delay_ms;
 };
 
 /**
@@ -87,3 +92,29 @@ const struct device *zmk_input_processor_runtime_find_by_name(const char *name);
  */
 int zmk_input_processor_runtime_foreach(int (*callback)(const struct device *dev, void *user_data),
                                        void *user_data);
+
+/**
+ * @brief Set temp-layer layer configuration
+ *
+ * @param dev Pointer to the device structure
+ * @param enabled Whether temp-layer is enabled
+ * @param layer Target layer ID for temp-layer
+ * @param activation_delay_ms Delay before activating layer after input starts (ms)
+ * @param deactivation_delay_ms Delay before deactivating layer after input stops (ms)
+ * @param persistent If true, save to persistent storage; if false, temporary
+ * @return 0 on success, negative error code on failure
+ */
+int zmk_input_processor_runtime_set_temp_layer(const struct device *dev,
+                                               bool enabled,
+                                               uint8_t layer,
+                                               uint32_t activation_delay_ms,
+                                               uint32_t deactivation_delay_ms,
+                                               bool persistent);
+
+/**
+ * @brief Notify temp-layer to keep the layer active (called by behavior)
+ *
+ * @param dev Pointer to the device structure
+ * @param keep_active If true, prevent temp-layer from deactivating; if false, allow deactivation
+ */
+void zmk_input_processor_runtime_temp_layer_keep_active(const struct device *dev, bool keep_active);

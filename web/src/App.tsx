@@ -90,6 +90,14 @@ export function InputProcessorManager() {
   const [scaleDivisor, setScaleDivisor] = useState<number>(1);
   const [rotationDegrees, setRotationDegrees] = useState<number>(0);
 
+  // Temp-layer layer state
+  const [tempLayerEnabled, setTempLayerEnabled] = useState<boolean>(false);
+  const [tempLayerLayer, setTempLayerLayer] = useState<number>(0);
+  const [tempLayerActivationDelay, setTempLayerActivationDelay] =
+    useState<number>(100);
+  const [tempLayerDeactivationDelay, setTempLayerDeactivationDelay] =
+    useState<number>(500);
+
   const subsystem = useMemo(
     () => zmkApp?.findSubsystem(SUBSYSTEM_IDENTIFIER),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -194,6 +202,23 @@ export function InputProcessorManager() {
         return;
       }
 
+      // Set temp-layer configuration
+      const tempLayerRequest = Request.create({
+        setTempLayer: {
+          name: selectedProcessor,
+          enabled: tempLayerEnabled,
+          layer: tempLayerLayer,
+          activationDelayMs: tempLayerActivationDelay,
+          deactivationDelayMs: tempLayerDeactivationDelay,
+        },
+      });
+      const tempLayerResp = await callRPC(tempLayerRequest);
+      if (tempLayerResp?.error) {
+        setError(tempLayerResp.error.message);
+        setIsLoading(false);
+        return;
+      }
+
       // Updates will come via notifications
     } catch (err) {
       setError(
@@ -208,6 +233,10 @@ export function InputProcessorManager() {
     scaleMultiplier,
     scaleDivisor,
     rotationDegrees,
+    tempLayerEnabled,
+    tempLayerLayer,
+    tempLayerActivationDelay,
+    tempLayerDeactivationDelay,
   ]);
 
   const selectProcessor = useCallback(
@@ -218,6 +247,10 @@ export function InputProcessorManager() {
         setScaleMultiplier(proc.scaleMultiplier);
         setScaleDivisor(proc.scaleDivisor);
         setRotationDegrees(proc.rotationDegrees);
+        setTempLayerEnabled(proc.tempLayerEnabled);
+        setTempLayerLayer(proc.tempLayerLayer);
+        setTempLayerActivationDelay(proc.tempLayerActivationDelayMs);
+        setTempLayerDeactivationDelay(proc.tempLayerDeactivationDelayMs);
       }
     },
     [processors]
@@ -263,6 +296,10 @@ export function InputProcessorManager() {
               setScaleMultiplier(proc.scaleMultiplier);
               setScaleDivisor(proc.scaleDivisor);
               setRotationDegrees(proc.rotationDegrees);
+              setTempLayerEnabled(proc.tempLayerEnabled);
+              setTempLayerLayer(proc.tempLayerLayer);
+              setTempLayerActivationDelay(proc.tempLayerActivationDelayMs);
+              setTempLayerDeactivationDelay(proc.tempLayerDeactivationDelayMs);
             }
 
             // If no processor is selected yet, select the first one
@@ -271,6 +308,10 @@ export function InputProcessorManager() {
               setScaleMultiplier(proc.scaleMultiplier);
               setScaleDivisor(proc.scaleDivisor);
               setRotationDegrees(proc.rotationDegrees);
+              setTempLayerEnabled(proc.tempLayerEnabled);
+              setTempLayerLayer(proc.tempLayerLayer);
+              setTempLayerActivationDelay(proc.tempLayerActivationDelayMs);
+              setTempLayerDeactivationDelay(proc.tempLayerDeactivationDelayMs);
             }
           }
         } catch (err) {
@@ -348,6 +389,8 @@ export function InputProcessorManager() {
                 >
                   Scale: {proc.scaleMultiplier}/{proc.scaleDivisor} | Rotation:{" "}
                   {proc.rotationDegrees}°
+                  {proc.tempLayerEnabled &&
+                    ` | Temp-Layer: Layer ${proc.tempLayerLayer}`}
                 </div>
               </div>
             ))}
@@ -413,6 +456,103 @@ export function InputProcessorManager() {
               }
             />
           </div>
+
+          <hr style={{ margin: "1.5rem 0", border: "1px solid #e0e0e0" }} />
+
+          <h3>Temp-Layer Layer</h3>
+          <p style={{ fontSize: "0.9em", color: "#666", marginBottom: "1rem" }}>
+            Automatically activate a layer when using the pointing device
+          </p>
+
+          <div className="input-group">
+            <label htmlFor="temp-layer-enabled">
+              <input
+                id="temp-layer-enabled"
+                type="checkbox"
+                checked={tempLayerEnabled}
+                onChange={(e) => setTempLayerEnabled(e.target.checked)}
+                style={{ marginRight: "0.5rem" }}
+              />
+              Enable Temp-Layer Layer
+            </label>
+          </div>
+
+          {tempLayerEnabled && (
+            <>
+              <div className="input-group">
+                <label htmlFor="temp-layer">Target Layer:</label>
+                <input
+                  id="temp-layer"
+                  type="number"
+                  min="0"
+                  max="15"
+                  value={tempLayerLayer}
+                  onChange={(e) =>
+                    setTempLayerLayer(parseInt(e.target.value) || 0)
+                  }
+                />
+                <div
+                  style={{
+                    fontSize: "0.85em",
+                    color: "#666",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  Layer number to activate (0-15)
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label htmlFor="activation-delay">Activation Delay (ms):</label>
+                <input
+                  id="activation-delay"
+                  type="number"
+                  min="0"
+                  max="5000"
+                  step="10"
+                  value={tempLayerActivationDelay}
+                  onChange={(e) =>
+                    setTempLayerActivationDelay(parseInt(e.target.value) || 0)
+                  }
+                />
+                <div
+                  style={{
+                    fontSize: "0.85em",
+                    color: "#666",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  Delay before activating layer (0-5000ms)
+                </div>
+              </div>
+
+              <div className="input-group">
+                <label htmlFor="deactivation-delay">
+                  Deactivation Delay (ms):
+                </label>
+                <input
+                  id="deactivation-delay"
+                  type="number"
+                  min="0"
+                  max="5000"
+                  step="10"
+                  value={tempLayerDeactivationDelay}
+                  onChange={(e) =>
+                    setTempLayerDeactivationDelay(parseInt(e.target.value) || 0)
+                  }
+                />
+                <div
+                  style={{
+                    fontSize: "0.85em",
+                    color: "#666",
+                    marginTop: "0.25rem",
+                  }}
+                >
+                  Delay before deactivating layer after input stops (0-5000ms)
+                </div>
+              </div>
+            </>
+          )}
 
           <button
             className="btn btn-primary"

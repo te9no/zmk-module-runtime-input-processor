@@ -21,7 +21,8 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
  * Metadata for the custom subsystem.
  */
 static struct zmk_rpc_custom_subsystem_meta rip_feature_meta = {
-    ZMK_RPC_CUSTOM_SUBSYSTEM_UI_URLS("http://localhost:5173"),
+    ZMK_RPC_CUSTOM_SUBSYSTEM_UI_URLS(
+        "https://cormoran.github.io/zmk-module-runtime-input-processor/"),
     .security = ZMK_STUDIO_RPC_HANDLER_UNSECURED,
 };
 
@@ -51,6 +52,8 @@ static int handle_set_rotation(const cormoran_rip_SetRotationRequest *req,
 static int handle_reset_input_processor(
     const cormoran_rip_ResetInputProcessorRequest *req,
     cormoran_rip_Response *resp);
+static int handle_set_temp_layer(const cormoran_rip_SetTempLayerRequest *req,
+                                 cormoran_rip_Response *resp);
 
 /**
  * Main request handler for the custom RPC subsystem.
@@ -99,6 +102,9 @@ static bool rip_rpc_handle_request(const zmk_custom_CallRequest *raw_request,
         case cormoran_rip_Request_reset_input_processor_tag:
             rc = handle_reset_input_processor(
                 &req.request_type.reset_input_processor, resp);
+            break;
+        case cormoran_rip_Request_set_temp_layer_tag:
+            rc = handle_set_temp_layer(&req.request_type.set_temp_layer, resp);
             break;
         default:
             LOG_WRN("Unsupported rip request type: %d", req.which_request_type);
@@ -190,9 +196,15 @@ static int handle_get_input_processor(
 
     strncpy(result.processor.name, name, sizeof(result.processor.name) - 1);
     result.processor.name[sizeof(result.processor.name) - 1] = '\0';
-    result.processor.scale_multiplier = config.scale_multiplier;
-    result.processor.scale_divisor    = config.scale_divisor;
-    result.processor.rotation_degrees = config.rotation_degrees;
+    result.processor.scale_multiplier   = config.scale_multiplier;
+    result.processor.scale_divisor      = config.scale_divisor;
+    result.processor.rotation_degrees   = config.rotation_degrees;
+    result.processor.temp_layer_enabled = config.temp_layer_enabled;
+    result.processor.temp_layer_layer   = config.temp_layer_layer;
+    result.processor.temp_layer_activation_delay_ms =
+        config.temp_layer_activation_delay_ms;
+    result.processor.temp_layer_deactivation_delay_ms =
+        config.temp_layer_deactivation_delay_ms;
 
     resp->which_response_type = cormoran_rip_Response_get_input_processor_tag;
     resp->response_type.get_input_processor = result;
@@ -229,8 +241,6 @@ static int handle_set_scale_multiplier(
         LOG_ERR("Failed to set scale multiplier: %d", ret);
         return ret;
     }
-
-    // Event will be raised by listener
 
     // Return empty response
     resp->which_response_type = cormoran_rip_Response_set_scale_multiplier_tag;
@@ -271,8 +281,6 @@ static int handle_set_scale_divisor(
         return ret;
     }
 
-    // Event will be raised by listener
-
     // Return empty response
     resp->which_response_type = cormoran_rip_Response_set_scale_divisor_tag;
     resp->response_type.set_scale_divisor =
@@ -302,8 +310,6 @@ static int handle_set_rotation(const cormoran_rip_SetRotationRequest *req,
         LOG_ERR("Failed to set rotation: %d", ret);
         return ret;
     }
-
-    // Event will be raised by listener
 
     // Return empty response
     resp->which_response_type        = cormoran_rip_Response_set_rotation_tag;
@@ -335,13 +341,46 @@ static int handle_reset_input_processor(
         return ret;
     }
 
-    // Event will be raised by listener
-
     // Return empty response
     resp->which_response_type = cormoran_rip_Response_reset_input_processor_tag;
     resp->response_type.reset_input_processor =
         (cormoran_rip_ResetInputProcessorResponse)
             cormoran_rip_ResetInputProcessorResponse_init_zero;
+
+    return 0;
+}
+
+/**
+ * Handle setting temp-layer layer configuration
+ */
+static int handle_set_temp_layer(const cormoran_rip_SetTempLayerRequest *req,
+                                 cormoran_rip_Response *resp) {
+    LOG_DBG(
+        "Setting temp-layer for %s: enabled=%d, layer=%d, act_delay=%d, "
+        "deact_delay=%d",
+        req->name, req->enabled, req->layer, req->activation_delay_ms,
+        req->deactivation_delay_ms);
+
+    const struct device *dev =
+        zmk_input_processor_runtime_find_by_name(req->name);
+    if (!dev) {
+        LOG_WRN("Input processor not found: %s", req->name);
+        return -ENODEV;
+    }
+
+    // Set temp-layer configuration (persistent)
+    int ret = zmk_input_processor_runtime_set_temp_layer(
+        dev, req->enabled, req->layer, req->activation_delay_ms,
+        req->deactivation_delay_ms, true);
+    if (ret < 0) {
+        LOG_ERR("Failed to set temp-layer: %d", ret);
+        return ret;
+    }
+
+    // Return empty response
+    resp->which_response_type = cormoran_rip_Response_set_temp_layer_tag;
+    resp->response_type.set_temp_layer = (cormoran_rip_SetTempLayerResponse)
+        cormoran_rip_SetTempLayerResponse_init_zero;
 
     return 0;
 }

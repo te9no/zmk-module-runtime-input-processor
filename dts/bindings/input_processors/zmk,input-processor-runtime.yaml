@@ -50,3 +50,40 @@ properties:
   track-remainders:
     type: boolean
     description: Track remainders for scaling operations (enabled if present)
+
+  temp-layer-transparent-behavior:
+    type: phandle
+    description: |
+      Behavior to compare against for transparent detection (typically &trans).
+      Used for efficient temp-layer layer deactivation logic.
+
+  temp-layer-kp-behavior:
+    type: phandle
+    description: |
+      Behavior to compare against for key press detection (typically &kp).
+      Used to identify modifier keys for temp-layer layer deactivation logic.
+
+  temp-layer-keep-keycodes:
+    type: array
+    description: |
+      List of modifier keycodes that should not deactivate the temp-layer layer.
+      Typically includes LCTRL, LSHIFT, LALT, LGUI, RCTRL, RSHIFT, RALT, RGUI.
+
+  temp-layer-enabled:
+    type: boolean
+    description: If present, temp-layer layer is enabled by default
+
+  temp-layer:
+    type: int
+    default: 0
+    description: Default target layer ID for temp-layer
+
+  temp-layer-activation-delay-ms:
+    type: int
+    default: 100
+    description: Default delay before activating temp-layer layer (milliseconds)
+
+  temp-layer-deactivation-delay-ms:
+    type: int
+    default: 500
+    description: Default delay before deactivating temp-layer layer after input stops (milliseconds)
