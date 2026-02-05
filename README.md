@@ -5,7 +5,7 @@ This ZMK module provides runtime configurable input processors for pointing devi
 ## Features
 
 - **Runtime Configuration**: Adjust input processor parameters without rebuilding firmware
-- **Web Interface**: Configure settings through a browser-based UI (currently being updated)
+- **Web Interface**: Configure settings through a browser-based UI
 - **Scaling Support**: Configure speed multipliers (e.g., x2 faster, x0.5 slower)
 - **Rotation Support**: Apply rotation transformations in degrees (fully implemented with paired X/Y handling)
 - **Persistent Settings**: Settings saved to non-volatile storage
@@ -13,6 +13,7 @@ This ZMK module provides runtime configurable input processors for pointing devi
 - **Short Names**: Processor names limited to 8 characters for BLE efficiency
 - **Temporary Changes**: Hold a key to temporarily change settings (perfect for DPI toggle)
 - **Temp-Layer Layer**: Automatically activate a layer when using pointing device, deactivate on key press or timeout
+- **Active Layers**: Specify which layers the processor should be active on using a bitmask
 
 ## Setup
 
@@ -96,6 +97,12 @@ CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC=y
 		temp-layer = <1>;  // Default to layer 1
 		temp-layer-activation-delay-ms = <100>;  // 100ms activation delay
 		temp-layer-deactivation-delay-ms = <500>;  // 500ms deactivation delay
+
+		// Optional: Active layers configuration
+		// Bitmask of layers where processor should be active (0 = all layers)
+		// Each bit represents a layer: bit 0 = layer 0, bit 1 = layer 1, etc.
+		// Example: active-layers = <0x00000003> activates on layers 0 and 1 only
+		active-layers = <0>;  // Default: active on all layers
 
 		// Optional: Performance optimization
 		temp-layer-transparent-behavior = <&trans>;
@@ -243,6 +250,45 @@ You can create a behavior to prevent the temp-layer layer from deactivating whil
 ```
 
 When holding the keep-active behavior key, the temp-layer layer will not deactivate when you press other keys or after the timeout period.
+
+### Active Layers
+
+The active layers feature allows you to specify which layers the input processor should be active on. This is useful when you want the processor to only apply transformations (scaling, rotation) on specific layers.
+
+**Configuration via Device Tree:**
+
+```dts
+my_pointer_processor: my_pointer_processor {
+    compatible = "zmk,input-processor-runtime";
+    processor-label = "trackpad";
+    // ... basic config ...
+
+    // Active on layers 0 and 1 only (bitmask: 0x00000003)
+    active-layers = <0x00000003>;
+};
+```
+
+**Configuration via Web UI:**
+
+The web interface provides two ways to configure active layers:
+
+1. **Hex Input**: Enter the layer bitmask directly as a hexadecimal value (e.g., `0x00000003` for layers 0 and 1)
+2. **Layer Checkboxes**: Click individual layer checkboxes to build the bitmask visually
+
+**Bitmask Format:**
+
+- Each bit represents a layer: bit 0 = layer 0, bit 1 = layer 1, etc.
+- `0x00000000` (default): Processor is active on all layers
+- `0x00000001`: Active only on layer 0
+- `0x00000003`: Active on layers 0 and 1
+- `0x0000000F`: Active on layers 0-3
+- `0xFFFFFFFF`: Active on all 32 layers
+
+**Behavior:**
+
+- If at least one of the specified layers is active, the processor works normally
+- If none of the specified layers are active, the processor skips processing (no transformation applied)
+- This allows you to have different pointer speeds or behaviors on different layers
 
 ## Development Guide
 

@@ -11,6 +11,7 @@
 #include <zephyr/logging/log.h>
 #include <zmk/event_manager.h>
 #include <zmk/events/input_processor_state_changed.h>
+#include <zmk/keymap.h>
 #include <zmk/pointing/input_processor_runtime.h>
 #include <zmk/studio/custom.h>
 LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
@@ -63,6 +64,12 @@ static int handle_set_temp_layer_activation_delay(
     cormoran_rip_Response *resp);
 static int handle_set_temp_layer_deactivation_delay(
     const cormoran_rip_SetTempLayerDeactivationDelayRequest *req,
+    cormoran_rip_Response *resp);
+static int handle_set_active_layers(
+    const cormoran_rip_SetActiveLayersRequest *req,
+    cormoran_rip_Response *resp);
+static int handle_get_layer_info(
+    const cormoran_rip_GetLayerInfoRequest *req,
     cormoran_rip_Response *resp);
 
 /**
@@ -128,6 +135,14 @@ static bool rip_rpc_handle_request(const zmk_custom_CallRequest *raw_request,
         case cormoran_rip_Request_set_temp_layer_deactivation_delay_tag:
             rc = handle_set_temp_layer_deactivation_delay(
                 &req.request_type.set_temp_layer_deactivation_delay, resp);
+            break;
+        case cormoran_rip_Request_set_active_layers_tag:
+            rc = handle_set_active_layers(
+                &req.request_type.set_active_layers, resp);
+            break;
+        case cormoran_rip_Request_get_layer_info_tag:
+            rc = handle_get_layer_info(
+                &req.request_type.get_layer_info, resp);
             break;
         default:
             LOG_WRN("Unsupported rip request type: %d", req.which_request_type);
@@ -236,6 +251,7 @@ static int handle_get_input_processor(
         config.temp_layer_activation_delay_ms;
     result.processor.temp_layer_deactivation_delay_ms =
         config.temp_layer_deactivation_delay_ms;
+    result.processor.active_layers = config.active_layers;
 
     resp->which_response_type = cormoran_rip_Response_get_input_processor_tag;
     resp->response_type.get_input_processor = result;
@@ -510,6 +526,100 @@ static int handle_set_temp_layer_deactivation_delay(
         (cormoran_rip_SetTempLayerDeactivationDelayResponse)
             cormoran_rip_SetTempLayerDeactivationDelayResponse_init_zero;
 
+    return 0;
+}
+
+/**
+ * Handle setting active layers bitmask
+ */
+static int handle_set_active_layers(
+    const cormoran_rip_SetActiveLayersRequest *req,
+    cormoran_rip_Response *resp) {
+    LOG_DBG("Setting active layers for id=%d to 0x%08x", req->id, req->layers);
+
+    const struct device *dev =
+        zmk_input_processor_runtime_find_by_id(req->id);
+    if (!dev) {
+        LOG_WRN("Input processor not found: id=%d", req->id);
+        return -ENODEV;
+    }
+
+    // Set active layers (persistent)
+    int ret = zmk_input_processor_runtime_set_active_layers(
+        dev, req->layers, true);
+    if (ret < 0) {
+        LOG_ERR("Failed to set active layers: %d", ret);
+        return ret;
+    }
+
+    // Return empty response
+    resp->which_response_type = cormoran_rip_Response_set_active_layers_tag;
+    resp->response_type.set_active_layers =
+        (cormoran_rip_SetActiveLayersResponse)
+            cormoran_rip_SetActiveLayersResponse_init_zero;
+
+    return 0;
+}
+
+/**
+ * Handle getting layer information
+ */
+
+
+static bool encode_layer_name(pb_ostream_t *stream, const pb_field_t *field,
+                              void *const *arg) {
+    const char *name = (const char *)*arg;
+    if (!pb_encode_tag_for_field(stream, field)) {
+        return false;
+    }
+    return pb_encode_string(stream, (const pb_byte_t *)name, strlen(name));
+}
+
+static bool encode_layer_info(pb_ostream_t *stream, const pb_field_t *field,
+                              void *const *arg) {
+    for (int layer_idx = 0; layer_idx < ZMK_KEYMAP_LAYERS_LEN; layer_idx++) {
+        zmk_keymap_layer_id_t layer_id = zmk_keymap_layer_index_to_id(layer_idx);
+
+        if (layer_id == ZMK_KEYMAP_LAYER_ID_INVAL) {
+            continue;
+        }
+
+        const char *layer_name = zmk_keymap_layer_name(layer_id);
+        if (layer_name) {
+            cormoran_rip_LayerInfo info = cormoran_rip_LayerInfo_init_zero;
+            info.index = layer_idx;
+            
+            // Set up callback for encoding the name string
+            info.name.funcs.encode = encode_layer_name;
+            info.name.arg = (void *)layer_name;
+
+            if (!pb_encode_tag_for_field(stream, field)) {
+                return false;
+            }
+
+            if (!pb_encode_submessage(stream, cormoran_rip_LayerInfo_fields,
+                                     &info)) {
+                return false;
+            }
+        }
+    }
+
+    return true;
+}
+
+static int handle_get_layer_info(
+    const cormoran_rip_GetLayerInfoRequest *req,
+    cormoran_rip_Response *resp) {
+    LOG_DBG("Getting layer information");
+
+    cormoran_rip_GetLayerInfoResponse result =
+        cormoran_rip_GetLayerInfoResponse_init_zero;
+
+    // Set up callback for encoding layers
+    result.layers.funcs.encode = encode_layer_info;
+
+    resp->which_response_type = cormoran_rip_Response_get_layer_info_tag;
+    resp->response_type.get_layer_info = result;
     return 0;
 }
 

@@ -85,6 +85,11 @@ export function InputProcessorManager() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Layer information
+  const [layers, setLayers] = useState<Array<{ index: number; name: string }>>(
+    []
+  );
+
   // Form state
   const [scaleMultiplier, setScaleMultiplier] = useState<number>(1);
   const [scaleDivisor, setScaleDivisor] = useState<number>(1);
@@ -97,6 +102,9 @@ export function InputProcessorManager() {
     useState<number>(100);
   const [tempLayerDeactivationDelay, setTempLayerDeactivationDelay] =
     useState<number>(500);
+
+  // Active layers state
+  const [activeLayers, setActiveLayers] = useState<number>(0);
 
   const subsystem = useMemo(
     () => zmkApp?.findSubsystem(SUBSYSTEM_IDENTIFIER),
@@ -149,6 +157,23 @@ export function InputProcessorManager() {
       );
     } finally {
       setIsLoading(false);
+    }
+  }, [callRPC]);
+
+  const loadLayerInfo = useCallback(async () => {
+    try {
+      const request = Request.create({
+        getLayerInfo: {},
+      });
+
+      const resp = await callRPC(request);
+      if (resp?.getLayerInfo?.layers) {
+        setLayers(resp.getLayerInfo.layers);
+      } else if (resp?.error) {
+        console.error("Failed to load layer info:", resp.error.message);
+      }
+    } catch (err) {
+      console.error("Failed to load layer info:", err);
     }
   }, [callRPC]);
 
@@ -258,6 +283,20 @@ export function InputProcessorManager() {
         return;
       }
 
+      // Set active layers
+      const activeLayersRequest = Request.create({
+        setActiveLayers: {
+          id: selectedProcessorId,
+          layers: activeLayers,
+        },
+      });
+      const activeLayersResp = await callRPC(activeLayersRequest);
+      if (activeLayersResp?.error) {
+        setError(activeLayersResp.error.message);
+        setIsLoading(false);
+        return;
+      }
+
       // Updates will come via notifications
     } catch (err) {
       setError(
@@ -276,6 +315,7 @@ export function InputProcessorManager() {
     tempLayerLayer,
     tempLayerActivationDelay,
     tempLayerDeactivationDelay,
+    activeLayers,
   ]);
 
   const selectProcessor = useCallback(
@@ -290,6 +330,7 @@ export function InputProcessorManager() {
         setTempLayerLayer(proc.tempLayerLayer);
         setTempLayerActivationDelay(proc.tempLayerActivationDelayMs);
         setTempLayerDeactivationDelay(proc.tempLayerDeactivationDelayMs);
+        setActiveLayers(proc.activeLayers);
       }
     },
     [processors]
@@ -298,6 +339,7 @@ export function InputProcessorManager() {
   useEffect(() => {
     if (subsystem) {
       loadProcessors();
+      loadLayerInfo();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subsystem]);
@@ -339,6 +381,7 @@ export function InputProcessorManager() {
               setTempLayerLayer(proc.tempLayerLayer);
               setTempLayerActivationDelay(proc.tempLayerActivationDelayMs);
               setTempLayerDeactivationDelay(proc.tempLayerDeactivationDelayMs);
+              setActiveLayers(proc.activeLayers);
             }
 
             // If no processor is selected yet, select the first one
@@ -351,6 +394,7 @@ export function InputProcessorManager() {
               setTempLayerLayer(proc.tempLayerLayer);
               setTempLayerActivationDelay(proc.tempLayerActivationDelayMs);
               setTempLayerDeactivationDelay(proc.tempLayerDeactivationDelayMs);
+              setActiveLayers(proc.activeLayers);
             }
           }
         } catch (err) {
@@ -523,16 +567,26 @@ export function InputProcessorManager() {
             <>
               <div className="input-group">
                 <label htmlFor="temp-layer">Target Layer:</label>
-                <input
+                <select
                   id="temp-layer"
-                  type="number"
-                  min="0"
-                  max="15"
                   value={tempLayerLayer}
                   onChange={(e) =>
                     setTempLayerLayer(parseInt(e.target.value) || 0)
                   }
-                />
+                  style={{ padding: "0.5rem", fontSize: "1rem" }}
+                >
+                  {layers.length > 0
+                    ? layers.map((layer) => (
+                        <option key={layer.index} value={layer.index}>
+                          {layer.name} (Layer {layer.index})
+                        </option>
+                      ))
+                    : Array.from({ length: 16 }, (_, i) => i).map((i) => (
+                        <option key={i} value={i}>
+                          Layer {i}
+                        </option>
+                      ))}
+                </select>
                 <div
                   style={{
                     fontSize: "0.85em",
@@ -540,7 +594,7 @@ export function InputProcessorManager() {
                     marginTop: "0.25rem",
                   }}
                 >
-                  Layer number to activate (0-15)
+                  Layer to activate when using pointing device
                 </div>
               </div>
 
@@ -595,6 +649,93 @@ export function InputProcessorManager() {
               </div>
             </>
           )}
+
+          <hr style={{ margin: "1.5rem 0", border: "1px solid #e0e0e0" }} />
+
+          <h3>Active Layers</h3>
+          <p style={{ fontSize: "0.9em", color: "#666", marginBottom: "1rem" }}>
+            Select which layers the processor should be active on. If no layers
+            are selected (0), the processor works on all layers.
+          </p>
+
+          <div className="input-group">
+            <label htmlFor="active-layers">Layer Bitmask (hex):</label>
+            <input
+              id="active-layers"
+              type="text"
+              value={`0x${activeLayers.toString(16).toUpperCase().padStart(8, "0")}`}
+              onChange={(e) => {
+                const val = e.target.value.replace(/^0x/i, "");
+                const parsed = parseInt(val || "0", 16);
+                if (!isNaN(parsed)) {
+                  setActiveLayers(parsed);
+                }
+              }}
+              style={{ fontFamily: "monospace" }}
+            />
+            <div
+              style={{
+                fontSize: "0.85em",
+                color: "#666",
+                marginTop: "0.25rem",
+              }}
+            >
+              Bitmask: bit 0 = layer 0, bit 1 = layer 1, etc. (0x00000000 = all
+              layers)
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: "1rem",
+              padding: "0.75rem",
+              backgroundColor: "#f5f5f5",
+              borderRadius: "4px",
+            }}
+          >
+            <strong>Select Layers:</strong>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                gap: "0.5rem",
+                marginTop: "0.5rem",
+              }}
+            >
+              {layers.length > 0 ? (
+                layers.map((layer) => (
+                  <label
+                    key={layer.index}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      fontSize: "0.9em",
+                      cursor: "pointer",
+                      padding: "0.25rem",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={(activeLayers & (1 << layer.index)) !== 0}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setActiveLayers(activeLayers | (1 << layer.index));
+                        } else {
+                          setActiveLayers(activeLayers & ~(1 << layer.index));
+                        }
+                      }}
+                      style={{ marginRight: "0.5rem" }}
+                    />
+                    {layer.name}
+                  </label>
+                ))
+              ) : (
+                <p style={{ fontSize: "0.9em", color: "#666" }}>
+                  Loading layers...
+                </p>
+              )}
+            </div>
+          </div>
 
           <button
             className="btn btn-primary"
