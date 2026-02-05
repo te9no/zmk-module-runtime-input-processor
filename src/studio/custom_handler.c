@@ -565,11 +565,6 @@ static int handle_set_active_layers(
  * Handle getting layer information
  */
 
-// Callback to encode layer info
-struct layer_info_context {
-    int current_idx;
-    int layer_count;
-};
 
 static bool encode_layer_name(pb_ostream_t *stream, const pb_field_t *field,
                               void *const *arg) {
@@ -582,10 +577,7 @@ static bool encode_layer_name(pb_ostream_t *stream, const pb_field_t *field,
 
 static bool encode_layer_info(pb_ostream_t *stream, const pb_field_t *field,
                               void *const *arg) {
-    struct layer_info_context *ctx = (struct layer_info_context *)*arg;
-
-    for (int layer_idx = 0; layer_idx < ZMK_KEYMAP_LAYERS_LEN && ctx->current_idx < 32;
-         layer_idx++) {
+    for (int layer_idx = 0; layer_idx < ZMK_KEYMAP_LAYERS_LEN; layer_idx++) {
         zmk_keymap_layer_id_t layer_id = zmk_keymap_layer_index_to_id(layer_idx);
 
         if (layer_id == ZMK_KEYMAP_LAYER_ID_INVAL) {
@@ -609,9 +601,6 @@ static bool encode_layer_info(pb_ostream_t *stream, const pb_field_t *field,
                                      &info)) {
                 return false;
             }
-
-            ctx->current_idx++;
-            ctx->layer_count++;
         }
     }
 
@@ -623,19 +612,14 @@ static int handle_get_layer_info(
     cormoran_rip_Response *resp) {
     LOG_DBG("Getting layer information");
 
-    struct layer_info_context ctx = {.current_idx = 0, .layer_count = 0};
-
     cormoran_rip_GetLayerInfoResponse result =
         cormoran_rip_GetLayerInfoResponse_init_zero;
 
     // Set up callback for encoding layers
     result.layers.funcs.encode = encode_layer_info;
-    result.layers.arg = &ctx;
 
     resp->which_response_type = cormoran_rip_Response_get_layer_info_tag;
     resp->response_type.get_layer_info = result;
-
-    LOG_DBG("Returned %d layers", ctx.layer_count);
     return 0;
 }
 
