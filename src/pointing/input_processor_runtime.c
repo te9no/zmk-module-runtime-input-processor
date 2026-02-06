@@ -50,6 +50,10 @@ struct runtime_processor_config {
     uint16_t initial_temp_layer_deactivation_delay_ms;
     // Active layers bitmask from DT
     uint32_t initial_active_layers;
+    // Axis snap default settings from DT
+    uint8_t initial_axis_snap_mode;
+    uint16_t initial_axis_snap_threshold;
+    uint16_t initial_axis_snap_timeout_ms;
 };
 
 struct runtime_processor_data {
@@ -92,6 +96,21 @@ struct runtime_processor_data {
     // Active layers bitmask (0 = all layers)
     uint32_t active_layers;
     uint32_t persistent_active_layers;
+
+    // Axis snap settings
+    uint8_t axis_snap_mode;
+    uint16_t axis_snap_threshold;
+    uint16_t axis_snap_timeout_ms;
+
+    // Persistent axis snap settings
+    uint8_t persistent_axis_snap_mode;
+    uint16_t persistent_axis_snap_threshold;
+    uint16_t persistent_axis_snap_timeout_ms;
+
+    // Axis snap runtime state
+    bool axis_snap_locked;  // True when snap is active
+    int16_t axis_snap_cross_axis_accum;  // Accumulated movement on cross axis
+    int64_t axis_snap_lock_timestamp;  // When the snap lock started
 
     // Temp-layer runtime state
     struct k_work_delayable temp_layer_activation_work;
@@ -268,6 +287,71 @@ static int runtime_processor_handle_event(
         value = event->value;
     }
 
+    // Apply axis snapping if configured
+    if (data->axis_snap_mode != ZMK_INPUT_PROCESSOR_AXIS_SNAP_MODE_NONE && event->value != 0) {
+        int64_t now = k_uptime_get();
+        bool is_snapped_axis = (data->axis_snap_mode == ZMK_INPUT_PROCESSOR_AXIS_SNAP_MODE_X && is_x) ||
+                               (data->axis_snap_mode == ZMK_INPUT_PROCESSOR_AXIS_SNAP_MODE_Y && !is_x);
+        bool is_cross_axis = !is_snapped_axis;
+
+        // Initialize snap lock on first movement
+        if (!data->axis_snap_locked) {
+            data->axis_snap_locked = true;
+            data->axis_snap_cross_axis_accum = 0;
+            data->axis_snap_lock_timestamp = now;
+            LOG_DBG("Axis snap: lock started, mode=%d", data->axis_snap_mode);
+        }
+
+        // Check if we should unlock (timeout or threshold exceeded)
+        bool should_unlock = false;
+        if (data->axis_snap_timeout_ms > 0 && 
+            (now - data->axis_snap_lock_timestamp) >= data->axis_snap_timeout_ms) {
+            // Timeout expired, check if threshold was exceeded
+            int16_t abs_accum = data->axis_snap_cross_axis_accum < 0 ? 
+                               -data->axis_snap_cross_axis_accum : 
+                               data->axis_snap_cross_axis_accum;
+            if (abs_accum < data->axis_snap_threshold) {
+                // Threshold not exceeded within timeout, reset the lock window
+                data->axis_snap_cross_axis_accum = 0;
+                data->axis_snap_lock_timestamp = now;
+                LOG_DBG("Axis snap: timeout without threshold, resetting window");
+            } else {
+                // Threshold exceeded, unlock
+                should_unlock = true;
+                LOG_DBG("Axis snap: unlocked (threshold=%d exceeded with accum=%d)", 
+                       data->axis_snap_threshold, abs_accum);
+            }
+        }
+
+        if (!should_unlock && is_cross_axis) {
+            // Accumulate cross-axis movement
+            data->axis_snap_cross_axis_accum += value;
+            int16_t abs_accum = data->axis_snap_cross_axis_accum < 0 ? 
+                               -data->axis_snap_cross_axis_accum : 
+                               data->axis_snap_cross_axis_accum;
+            
+            // Check if threshold exceeded
+            if (abs_accum >= data->axis_snap_threshold) {
+                should_unlock = true;
+                LOG_DBG("Axis snap: unlocked (threshold=%d exceeded with accum=%d)", 
+                       data->axis_snap_threshold, abs_accum);
+            } else {
+                // Suppress cross-axis movement while locked
+                event->value = 0;
+                LOG_DBG("Axis snap: suppressing cross-axis movement (accum=%d, threshold=%d)", 
+                       abs_accum, data->axis_snap_threshold);
+            }
+        }
+
+        if (should_unlock) {
+            data->axis_snap_locked = false;
+            data->axis_snap_cross_axis_accum = 0;
+        }
+
+        // Update value after snap processing
+        value = event->value;
+    }
+
     // Apply rotation if configured
     if (data->rotation_degrees != 0) {
         if (is_x) {
@@ -329,6 +413,9 @@ struct processor_settings {
     uint16_t temp_layer_activation_delay_ms;
     uint16_t temp_layer_deactivation_delay_ms;
     uint32_t active_layers;
+    uint8_t axis_snap_mode;
+    uint16_t axis_snap_threshold;
+    uint16_t axis_snap_timeout_ms;
 };
 
 static void save_processor_settings_work_handler(struct k_work *work) {
@@ -349,6 +436,9 @@ static void save_processor_settings_work_handler(struct k_work *work) {
         .temp_layer_deactivation_delay_ms =
             data->persistent_temp_layer_deactivation_delay_ms,
         .active_layers = data->persistent_active_layers,
+        .axis_snap_mode = data->persistent_axis_snap_mode,
+        .axis_snap_threshold = data->persistent_axis_snap_threshold,
+        .axis_snap_timeout_ms = data->persistent_axis_snap_timeout_ms,
     };
 
     char path[64];
@@ -389,6 +479,9 @@ static int load_processor_settings_cb(const char *name, size_t len,
             data->persistent_temp_layer_deactivation_delay_ms =
                 settings.temp_layer_deactivation_delay_ms;
             data->persistent_active_layers = settings.active_layers;
+            data->persistent_axis_snap_mode = settings.axis_snap_mode;
+            data->persistent_axis_snap_threshold = settings.axis_snap_threshold;
+            data->persistent_axis_snap_timeout_ms = settings.axis_snap_timeout_ms;
 
             // Apply to current values
             data->scale_multiplier   = settings.scale_multiplier;
@@ -401,12 +494,15 @@ static int load_processor_settings_cb(const char *name, size_t len,
             data->temp_layer_deactivation_delay_ms =
                 settings.temp_layer_deactivation_delay_ms;
             data->active_layers = settings.active_layers;
+            data->axis_snap_mode = settings.axis_snap_mode;
+            data->axis_snap_threshold = settings.axis_snap_threshold;
+            data->axis_snap_timeout_ms = settings.axis_snap_timeout_ms;
             update_rotation_values(data);
 
-            LOG_INF("Loaded settings for %s: scale=%d/%d, rotation=%d, temp_layer=%d, active_layers=0x%08x",
+            LOG_INF("Loaded settings for %s: scale=%d/%d, rotation=%d, temp_layer=%d, active_layers=0x%08x, axis_snap=%d",
                 cfg->name, settings.scale_multiplier, settings.scale_divisor,
                 settings.rotation_degrees, settings.temp_layer_enabled,
-                settings.active_layers);
+                settings.active_layers, settings.axis_snap_mode);
             return 0;
         }
     }
@@ -460,6 +556,23 @@ static int runtime_processor_init(const struct device *dev) {
     data->temp_layer_keep_active  = false;
     data->last_input_timestamp    = 0;
     data->last_keypress_timestamp = 0;
+
+    // Initialize active layers from DT defaults
+    data->active_layers = cfg->initial_active_layers;
+    data->persistent_active_layers = cfg->initial_active_layers;
+
+    // Initialize axis snap settings from DT defaults
+    data->axis_snap_mode = cfg->initial_axis_snap_mode;
+    data->axis_snap_threshold = cfg->initial_axis_snap_threshold;
+    data->axis_snap_timeout_ms = cfg->initial_axis_snap_timeout_ms;
+    data->persistent_axis_snap_mode = cfg->initial_axis_snap_mode;
+    data->persistent_axis_snap_threshold = cfg->initial_axis_snap_threshold;
+    data->persistent_axis_snap_timeout_ms = cfg->initial_axis_snap_timeout_ms;
+
+    // Initialize axis snap runtime state
+    data->axis_snap_locked = false;
+    data->axis_snap_cross_axis_accum = 0;
+    data->axis_snap_lock_timestamp = 0;
 
     update_rotation_values(data);
 
@@ -628,6 +741,14 @@ void zmk_input_processor_runtime_restore_persistent(const struct device *dev) {
     data->rotation_degrees = data->persistent_rotation_degrees;
     update_rotation_values(data);
 
+    // Restore axis snap settings
+    data->axis_snap_mode = data->persistent_axis_snap_mode;
+    data->axis_snap_threshold = data->persistent_axis_snap_threshold;
+    data->axis_snap_timeout_ms = data->persistent_axis_snap_timeout_ms;
+    // Reset snap state when restoring
+    data->axis_snap_locked = false;
+    data->axis_snap_cross_axis_accum = 0;
+
     LOG_DBG("Restored persistent values");
 }
 
@@ -655,6 +776,9 @@ int zmk_input_processor_runtime_get_config(
         config->temp_layer_deactivation_delay_ms =
             data->persistent_temp_layer_deactivation_delay_ms;
         config->active_layers = data->persistent_active_layers;
+        config->axis_snap_mode = data->persistent_axis_snap_mode;
+        config->axis_snap_threshold = data->persistent_axis_snap_threshold;
+        config->axis_snap_timeout_ms = data->persistent_axis_snap_timeout_ms;
     }
 
     return 0;
@@ -710,6 +834,9 @@ int zmk_input_processor_runtime_get_config(
         .initial_temp_layer_deactivation_delay_ms =                                                    \
             DT_INST_PROP_OR(n, temp_layer_deactivation_delay_ms, 500),                                 \
         .initial_active_layers = DT_INST_PROP_OR(n, active_layers, 0),                                 \
+        .initial_axis_snap_mode = DT_INST_PROP_OR(n, axis_snap_mode, 0),                               \
+        .initial_axis_snap_threshold = DT_INST_PROP_OR(n, axis_snap_threshold, 100),                   \
+        .initial_axis_snap_timeout_ms = DT_INST_PROP_OR(n, axis_snap_timeout_ms, 1000),                \
     };                                                                                                 \
     static struct runtime_processor_data runtime_data_##n;                                             \
     DEVICE_DT_INST_DEFINE(n, &runtime_processor_init, NULL, &runtime_data_##n,                         \
@@ -1155,6 +1282,141 @@ int zmk_input_processor_runtime_set_active_layers(const struct device *dev,
     }
 
     LOG_INF("Active layers: 0x%08x%s", layers,
+            persistent ? " (persistent)" : " (temporary)");
+
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        raise_state_changed_event(dev);
+    }
+#endif
+
+    return ret;
+}
+
+int zmk_input_processor_runtime_set_axis_snap_mode(const struct device *dev,
+                                                    uint8_t mode,
+                                                    bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    if (mode > ZMK_INPUT_PROCESSOR_AXIS_SNAP_MODE_Y) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    data->axis_snap_mode = mode;
+
+    // Reset snap state when mode changes
+    data->axis_snap_locked = false;
+    data->axis_snap_cross_axis_accum = 0;
+
+    if (persistent) {
+        data->persistent_axis_snap_mode = mode;
+    }
+
+    LOG_INF("Axis snap mode: %d%s", mode,
+            persistent ? " (persistent)" : " (temporary)");
+
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        raise_state_changed_event(dev);
+    }
+#endif
+
+    return ret;
+}
+
+int zmk_input_processor_runtime_set_axis_snap_threshold(const struct device *dev,
+                                                         uint16_t threshold,
+                                                         bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    data->axis_snap_threshold = threshold;
+
+    if (persistent) {
+        data->persistent_axis_snap_threshold = threshold;
+    }
+
+    LOG_INF("Axis snap threshold: %d%s", threshold,
+            persistent ? " (persistent)" : " (temporary)");
+
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        raise_state_changed_event(dev);
+    }
+#endif
+
+    return ret;
+}
+
+int zmk_input_processor_runtime_set_axis_snap_timeout(const struct device *dev,
+                                                       uint16_t timeout_ms,
+                                                       bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    data->axis_snap_timeout_ms = timeout_ms;
+
+    if (persistent) {
+        data->persistent_axis_snap_timeout_ms = timeout_ms;
+    }
+
+    LOG_INF("Axis snap timeout: %d ms%s", timeout_ms,
+            persistent ? " (persistent)" : " (temporary)");
+
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        raise_state_changed_event(dev);
+    }
+#endif
+
+    return ret;
+}
+
+int zmk_input_processor_runtime_set_axis_snap(const struct device *dev,
+                                               uint8_t mode,
+                                               uint16_t threshold,
+                                               uint16_t timeout_ms,
+                                               bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    if (mode > ZMK_INPUT_PROCESSOR_AXIS_SNAP_MODE_Y) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    data->axis_snap_mode = mode;
+    data->axis_snap_threshold = threshold;
+    data->axis_snap_timeout_ms = timeout_ms;
+
+    // Reset snap state when configuration changes
+    data->axis_snap_locked = false;
+    data->axis_snap_cross_axis_accum = 0;
+
+    if (persistent) {
+        data->persistent_axis_snap_mode = mode;
+        data->persistent_axis_snap_threshold = threshold;
+        data->persistent_axis_snap_timeout_ms = timeout_ms;
+    }
+
+    LOG_INF("Axis snap config: mode=%d, threshold=%d, timeout=%d ms%s",
+            mode, threshold, timeout_ms,
             persistent ? " (persistent)" : " (temporary)");
 
     int ret = 0;
