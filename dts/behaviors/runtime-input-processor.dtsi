@@ -84,11 +84,8 @@
 		rip_ysnap: ysnap {
 			compatible = "zmk,behavior-input-processor-axis-snap";
 			processor-name = "scroll";
-			snap-mode = <2>;  // Y axis
-			threshold = <100>;
-			timeout-ms = <1000>;
 			
-			#binding-cells = <0>;
+			#binding-cells = <2>;
 		};
 
 		// Axis Snap - X Axis (for horizontal scrolling)
@@ -98,11 +95,8 @@
 		rip_xsnap: xsnap {
 			compatible = "zmk,behavior-input-processor-axis-snap";
 			processor-name = "scroll";
-			snap-mode = <1>;  // X axis
-			threshold = <100>;
-			timeout-ms = <1000>;
 			
-			#binding-cells = <0>;
+			#binding-cells = <2>;
 		};
 	};
 };

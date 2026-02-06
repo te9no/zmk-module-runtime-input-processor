@@ -2,6 +2,13 @@ syntax = "proto3";
 
 package cormoran.rip;
 
+// Axis snap mode enum
+enum AxisSnapMode {
+    AXIS_SNAP_MODE_NONE = 0;  // No snapping
+    AXIS_SNAP_MODE_X = 1;     // Snap to X axis
+    AXIS_SNAP_MODE_Y = 2;     // Snap to Y axis
+}
+
 // Runtime Input Processor Messages
 message InputProcessorInfo {
     uint32 id               = 1;  // Processor ID (index in array)
@@ -18,7 +25,7 @@ message InputProcessorInfo {
     // Active layers bitmask (0 = all layers)
     uint32 active_layers = 10;  // Bitmask of layers where processor is active
     // Axis snap settings
-    uint32 axis_snap_mode = 11;  // Snap mode: 0=none, 1=X, 2=Y
+    AxisSnapMode axis_snap_mode = 11;  // Snap mode
     uint32 axis_snap_threshold = 12;  // Threshold for unsnapping
     uint32 axis_snap_timeout_ms = 13;  // Time window for threshold check (ms)
 }
@@ -97,8 +104,8 @@ message SetActiveLayersRequest {
 }
 
 message SetAxisSnapModeRequest {
-    uint32 id   = 1;  // ID of the input processor to update
-    uint32 mode = 2;  // Snap mode: 0=none, 1=X, 2=Y
+    uint32 id          = 1;  // ID of the input processor to update
+    AxisSnapMode mode  = 2;  // Snap mode
 }
 
 message SetAxisSnapThresholdRequest {

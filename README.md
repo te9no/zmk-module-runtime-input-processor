@@ -328,17 +328,18 @@ The web interface provides controls for axis snapping:
 
 - When snap is enabled, movement on the locked axis proceeds normally
 - Movement on the cross-axis is accumulated but suppressed (value set to 0)
-- If accumulated cross-axis movement exceeds the threshold within the timeout window, the snap lock is released
-- If the timeout expires without exceeding the threshold, the accumulated movement is reset
+- The accumulator decays over time (threshold amount over the timeout period)
+- If accumulated cross-axis movement exceeds the threshold, the snap lock is released
+- If no cross-axis movement occurs, the accumulator decays to zero after the timeout period
 
 **Example Use Cases:**
 
 - **Wheel Scroll**: Set `axis-snap-mode = <2>` on scroll processor to ensure wheel only scrolls vertically
-- **Text Selection**: Use the temporary snap behavior (`&ysnap`) to lock Y-axis while selecting text with mouse
+- **Text Selection**: Use the temporary snap behavior to lock Y-axis while selecting text with mouse
 
 **Temporary Snap Behavior:**
 
-You can temporarily enable axis snapping while holding a key:
+You can temporarily enable axis snapping while holding a key using binding parameters:
 
 ```dts
 #include <behaviors/runtime-input-processor.dtsi>
@@ -348,25 +349,22 @@ You can temporarily enable axis snapping while holding a key:
         compatible = "zmk,keymap";
         default_layer {
             bindings = <
-                &ysnap  // Hold for Y-axis snap (vertical only)
-                &xsnap  // Hold for X-axis snap (horizontal only)
+                &ysnap 2 100   // Hold for Y-axis snap (mode=2, threshold=100)
+                &xsnap 1 50    // Hold for X-axis snap (mode=1, threshold=50)
                 // ... other keys
             >;
         };
     };
 };
-
-// Customize snap behaviors
-&ysnap {
-    snap-mode = <2>;  // Y axis
-    threshold = <50>;  // Lower threshold for tighter control
-    timeout-ms = <500>;
-}
 ```
+
+The behavior takes two parameters:
+- **param1**: Snap mode (0=none, 1=X, 2=Y)
+- **param2**: Threshold for unlocking snap
 
 When you press and hold the snap behavior key:
 1. Current snap settings are saved
-2. Temporary snap settings are applied
+2. Temporary snap settings are applied (with 1000ms timeout)
 3. When you release the key, original settings are restored
 
 ## Development Guide

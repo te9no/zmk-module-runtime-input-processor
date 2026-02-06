@@ -110,7 +110,7 @@ struct runtime_processor_data {
     // Axis snap runtime state
     bool axis_snap_locked;  // True when snap is active
     int16_t axis_snap_cross_axis_accum;  // Accumulated movement on cross axis
-    int64_t axis_snap_lock_timestamp;  // When the snap lock started
+    int64_t axis_snap_last_decay_timestamp;  // Last time accumulator was decayed
 
     // Temp-layer runtime state
     struct k_work_delayable temp_layer_activation_work;
@@ -298,48 +298,66 @@ static int runtime_processor_handle_event(
         if (!data->axis_snap_locked) {
             data->axis_snap_locked = true;
             data->axis_snap_cross_axis_accum = 0;
-            data->axis_snap_lock_timestamp = now;
+            data->axis_snap_last_decay_timestamp = now;
             LOG_DBG("Axis snap: lock started, mode=%d", data->axis_snap_mode);
         }
 
-        // Check if we should unlock (timeout or threshold exceeded)
-        bool should_unlock = false;
-        if (data->axis_snap_timeout_ms > 0 && 
-            (now - data->axis_snap_lock_timestamp) >= data->axis_snap_timeout_ms) {
-            // Timeout expired, check if threshold was exceeded
-            int16_t abs_accum = data->axis_snap_cross_axis_accum < 0 ? 
-                               -data->axis_snap_cross_axis_accum : 
-                               data->axis_snap_cross_axis_accum;
-            if (abs_accum < data->axis_snap_threshold) {
-                // Threshold not exceeded within timeout, reset the lock window
-                data->axis_snap_cross_axis_accum = 0;
-                data->axis_snap_lock_timestamp = now;
-                LOG_DBG("Axis snap: timeout without threshold, resetting window");
-            } else {
-                // Threshold exceeded, unlock
-                should_unlock = true;
-                LOG_DBG("Axis snap: unlocked (threshold=%d exceeded with accum=%d)", 
-                       data->axis_snap_threshold, abs_accum);
+        // Decay accumulator over time
+        if (data->axis_snap_timeout_ms > 0 && data->axis_snap_last_decay_timestamp > 0) {
+            int64_t elapsed = now - data->axis_snap_last_decay_timestamp;
+            if (elapsed > 0) {
+                // Decay rate: threshold per timeout period
+                // Decay every 50ms
+                int64_t decay_periods = elapsed / 50;
+                if (decay_periods > 0) {
+                    int16_t decay_per_50ms = data->axis_snap_threshold / (data->axis_snap_timeout_ms / 50);
+                    if (decay_per_50ms < 1) {
+                        decay_per_50ms = 1;  // Minimum decay of 1
+                    }
+                    
+                    int16_t total_decay = decay_per_50ms * decay_periods;
+                    
+                    // Decay towards zero
+                    if (data->axis_snap_cross_axis_accum > 0) {
+                        data->axis_snap_cross_axis_accum -= total_decay;
+                        if (data->axis_snap_cross_axis_accum < 0) {
+                            data->axis_snap_cross_axis_accum = 0;
+                        }
+                    } else if (data->axis_snap_cross_axis_accum < 0) {
+                        data->axis_snap_cross_axis_accum += total_decay;
+                        if (data->axis_snap_cross_axis_accum > 0) {
+                            data->axis_snap_cross_axis_accum = 0;
+                        }
+                    }
+                    
+                    data->axis_snap_last_decay_timestamp = now;
+                    LOG_DBG("Axis snap: decayed accum to %d (decay=%d)", 
+                           data->axis_snap_cross_axis_accum, total_decay);
+                }
             }
         }
 
-        if (!should_unlock && is_cross_axis) {
-            // Accumulate cross-axis movement
+        bool should_unlock = false;
+
+        if (is_cross_axis) {
+            // Accumulate cross-axis movement (no abs)
             data->axis_snap_cross_axis_accum += value;
+            data->axis_snap_last_decay_timestamp = now;  // Reset decay timer on movement
+            
+            // Check if threshold exceeded (check absolute value)
             int16_t abs_accum = data->axis_snap_cross_axis_accum < 0 ? 
                                -data->axis_snap_cross_axis_accum : 
                                data->axis_snap_cross_axis_accum;
             
-            // Check if threshold exceeded
             if (abs_accum >= data->axis_snap_threshold) {
                 should_unlock = true;
                 LOG_DBG("Axis snap: unlocked (threshold=%d exceeded with accum=%d)", 
-                       data->axis_snap_threshold, abs_accum);
+                       data->axis_snap_threshold, data->axis_snap_cross_axis_accum);
             } else {
                 // Suppress cross-axis movement while locked
                 event->value = 0;
                 LOG_DBG("Axis snap: suppressing cross-axis movement (accum=%d, threshold=%d)", 
-                       abs_accum, data->axis_snap_threshold);
+                       data->axis_snap_cross_axis_accum, data->axis_snap_threshold);
             }
         }
 
@@ -572,7 +590,7 @@ static int runtime_processor_init(const struct device *dev) {
     // Initialize axis snap runtime state
     data->axis_snap_locked = false;
     data->axis_snap_cross_axis_accum = 0;
-    data->axis_snap_lock_timestamp = 0;
+    data->axis_snap_last_decay_timestamp = 0;
 
     update_rotation_values(data);
 
@@ -748,6 +766,7 @@ void zmk_input_processor_runtime_restore_persistent(const struct device *dev) {
     // Reset snap state when restoring
     data->axis_snap_locked = false;
     data->axis_snap_cross_axis_accum = 0;
+    data->axis_snap_last_decay_timestamp = 0;
 
     LOG_DBG("Restored persistent values");
 }

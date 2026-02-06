@@ -16,9 +16,6 @@ LOG_MODULE_DECLARE(zmk, CONFIG_ZMK_LOG_LEVEL);
 
 struct behavior_input_processor_axis_snap_config {
     const char *processor_name;
-    uint8_t snap_mode;  // 0=none, 1=X, 2=Y
-    uint16_t threshold;
-    uint16_t timeout_ms;
 };
 
 struct behavior_input_processor_axis_snap_data {
@@ -52,11 +49,17 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
         return -ENODEV;
     }
 
+    // Get snap parameters from binding (param1 = mode, param2 = threshold)
+    uint8_t snap_mode = binding->param1;
+    uint16_t threshold = binding->param2;
+    // Default timeout is 1000ms (can be made configurable if needed)
+    uint16_t timeout_ms = 1000;
+
     // Apply temporary axis snap configuration (non-persistent)
     int ret = zmk_input_processor_runtime_set_axis_snap(data->processor,
-                                                         cfg->snap_mode,
-                                                         cfg->threshold,
-                                                         cfg->timeout_ms,
+                                                         snap_mode,
+                                                         threshold,
+                                                         timeout_ms,
                                                          false);  // temporary
     if (ret < 0) {
         LOG_ERR("Failed to set temporary axis snap: %d", ret);
@@ -65,7 +68,7 @@ static int on_keymap_binding_pressed(struct zmk_behavior_binding *binding,
 
     data->is_active = true;
     LOG_INF("Applied temporary axis snap to %s: mode=%d, threshold=%d, timeout=%d",
-            cfg->processor_name, cfg->snap_mode, cfg->threshold, cfg->timeout_ms);
+            cfg->processor_name, snap_mode, threshold, timeout_ms);
 
     return ZMK_BEHAVIOR_OPAQUE;
 }
@@ -100,9 +103,6 @@ static const struct behavior_driver_api behavior_input_processor_axis_snap_drive
     static const struct behavior_input_processor_axis_snap_config                                \
         behavior_input_processor_axis_snap_config_##n = {                                        \
             .processor_name = DT_INST_PROP(n, processor_name),                                   \
-            .snap_mode = DT_INST_PROP_OR(n, snap_mode, 0),                                       \
-            .threshold = DT_INST_PROP_OR(n, threshold, 100),                                     \
-            .timeout_ms = DT_INST_PROP_OR(n, timeout_ms, 1000),                                  \
         };                                                                                       \
     BEHAVIOR_DT_INST_DEFINE(n, behavior_input_processor_axis_snap_init, NULL,                    \
                             &behavior_input_processor_axis_snap_data_##n,                        \
