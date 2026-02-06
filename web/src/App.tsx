@@ -800,8 +800,9 @@ export function InputProcessorManager() {
 
           <h3>Axis Snapping</h3>
           <p style={{ fontSize: "0.9em", color: "#666", marginBottom: "1rem" }}>
-            Lock scrolling to a specific axis. Movement on the other axis is suppressed
-            unless it exceeds the threshold within the timeout window.
+            Lock scrolling to a specific axis. Movement on the other axis is
+            suppressed unless it exceeds the threshold within the timeout
+            window.
           </p>
 
           <div className="input-group">
