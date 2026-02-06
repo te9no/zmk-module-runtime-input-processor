@@ -9,12 +9,11 @@ This ZMK module provides runtime configurable input processors for pointing devi
 - **Scaling Support**: Configure speed multipliers (e.g., x2 faster, x0.5 slower)
 - **Rotation Support**: Apply rotation transformations in degrees (fully implemented with paired X/Y handling)
 - **Axis Snapping**: Lock scrolling to X or Y axis with threshold-based unlock
-- **Persistent Settings**: Settings saved to non-volatile storage
-- **Multiple Processors**: Support for multiple input processors with individual configuration
-- **Short Names**: Processor names limited to 8 characters for BLE efficiency
-- **Temporary Changes**: Hold a key to temporarily change settings (perfect for DPI toggle)
 - **Temp-Layer Layer**: Automatically activate a layer when using pointing device, deactivate on key press or timeout
 - **Active Layers**: Specify which layers the processor should be active on using a bitmask
+- **Temporary Changes**: Hold a key to temporarily change settings (perfect for DPI toggle)
+- **Persistent Settings**: Settings saved to non-volatile storage
+- **Multiple Processors**: Support for multiple input processors with individual configuration
 
 ## Setup
 
@@ -313,6 +312,7 @@ scroll_runtime_input_processor: scroll_runtime_input_processor {
 ```
 
 Available axis snap mode constants:
+
 - `AXIS_SNAP_MODE_NONE` (0): No snapping
 - `AXIS_SNAP_MODE_X` (1): Snap to X axis (horizontal only)
 - `AXIS_SNAP_MODE_Y` (2): Snap to Y axis (vertical only)
@@ -367,10 +367,12 @@ You can temporarily enable axis snapping while holding a key using binding param
 ```
 
 The behavior takes two parameters:
+
 - **param1**: Snap mode (use constants: `AXIS_SNAP_MODE_NONE`, `AXIS_SNAP_MODE_X`, `AXIS_SNAP_MODE_Y`)
 - **param2**: Threshold for unlocking snap
 
 You can also configure the timeout in the behavior definition:
+
 ```dts
 &ysnap {
     timeout-ms = <500>;  // Custom timeout (default: 1000ms)
@@ -378,6 +380,7 @@ You can also configure the timeout in the behavior definition:
 ```
 
 When you press and hold the snap behavior key:
+
 1. Current snap settings are saved
 2. Temporary snap settings are applied (with 1000ms timeout)
 3. When you release the key, original settings are restored
