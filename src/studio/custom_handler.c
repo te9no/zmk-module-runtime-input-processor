@@ -80,6 +80,12 @@ static int handle_set_axis_snap_threshold(
 static int handle_set_axis_snap_timeout(
     const cormoran_rip_SetAxisSnapTimeoutRequest *req,
     cormoran_rip_Response *resp);
+static int handle_set_xy_to_scroll_enabled(
+    const cormoran_rip_SetXyToScrollEnabledRequest *req,
+    cormoran_rip_Response *resp);
+static int handle_set_xy_swap_enabled(
+    const cormoran_rip_SetXySwapEnabledRequest *req,
+    cormoran_rip_Response *resp);
 
 /**
  * Main request handler for the custom RPC subsystem.
@@ -164,6 +170,14 @@ static bool rip_rpc_handle_request(const zmk_custom_CallRequest *raw_request,
         case cormoran_rip_Request_set_axis_snap_timeout_tag:
             rc = handle_set_axis_snap_timeout(
                 &req.request_type.set_axis_snap_timeout, resp);
+            break;
+        case cormoran_rip_Request_set_xy_to_scroll_enabled_tag:
+            rc = handle_set_xy_to_scroll_enabled(
+                &req.request_type.set_xy_to_scroll_enabled, resp);
+            break;
+        case cormoran_rip_Request_set_xy_swap_enabled_tag:
+            rc = handle_set_xy_swap_enabled(
+                &req.request_type.set_xy_swap_enabled, resp);
             break;
         default:
             LOG_WRN("Unsupported rip request type: %d", req.which_request_type);
@@ -737,6 +751,70 @@ static int handle_get_layer_info(
 
     resp->which_response_type = cormoran_rip_Response_get_layer_info_tag;
     resp->response_type.get_layer_info = result;
+    return 0;
+}
+
+/**
+ * Handle setting XY-to-scroll enabled
+ */
+static int handle_set_xy_to_scroll_enabled(
+    const cormoran_rip_SetXyToScrollEnabledRequest *req,
+    cormoran_rip_Response *resp) {
+    LOG_DBG("Setting XY-to-scroll enabled for id=%d to %d", req->id, req->enabled);
+
+    const struct device *dev =
+        zmk_input_processor_runtime_find_by_id(req->id);
+    if (!dev) {
+        LOG_WRN("Input processor not found: id=%d", req->id);
+        return -ENODEV;
+    }
+
+    // Set XY-to-scroll enabled (persistent)
+    int ret = zmk_input_processor_runtime_set_xy_to_scroll_enabled(
+        dev, req->enabled, true);
+    if (ret < 0) {
+        LOG_ERR("Failed to set XY-to-scroll enabled: %d", ret);
+        return ret;
+    }
+
+    // Return empty response
+    resp->which_response_type = cormoran_rip_Response_set_xy_to_scroll_enabled_tag;
+    resp->response_type.set_xy_to_scroll_enabled =
+        (cormoran_rip_SetXyToScrollEnabledResponse)
+            cormoran_rip_SetXyToScrollEnabledResponse_init_zero;
+
+    return 0;
+}
+
+/**
+ * Handle setting XY-swap enabled
+ */
+static int handle_set_xy_swap_enabled(
+    const cormoran_rip_SetXySwapEnabledRequest *req,
+    cormoran_rip_Response *resp) {
+    LOG_DBG("Setting XY-swap enabled for id=%d to %d", req->id, req->enabled);
+
+    const struct device *dev =
+        zmk_input_processor_runtime_find_by_id(req->id);
+    if (!dev) {
+        LOG_WRN("Input processor not found: id=%d", req->id);
+        return -ENODEV;
+    }
+
+    // Set XY-swap enabled (persistent)
+    int ret = zmk_input_processor_runtime_set_xy_swap_enabled(
+        dev, req->enabled, true);
+    if (ret < 0) {
+        LOG_ERR("Failed to set XY-swap enabled: %d", ret);
+        return ret;
+    }
+
+    // Return empty response
+    resp->which_response_type = cormoran_rip_Response_set_xy_swap_enabled_tag;
+    resp->response_type.set_xy_swap_enabled =
+        (cormoran_rip_SetXySwapEnabledResponse)
+            cormoran_rip_SetXySwapEnabledResponse_init_zero;
+
     return 0;
 }
 

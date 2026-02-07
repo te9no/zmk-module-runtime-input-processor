@@ -36,6 +36,9 @@ struct zmk_input_processor_runtime_config {
     uint8_t axis_snap_mode;  // zmk_input_processor_axis_snap_mode
     uint16_t axis_snap_threshold;  // Threshold for unsnapping
     uint16_t axis_snap_timeout_ms;  // Time window for checking threshold
+    // Code mapping settings
+    bool xy_to_scroll_enabled;  // Map X/Y to horizontal/vertical scroll
+    bool xy_swap_enabled;  // Swap X and Y axes
 };
 
 /**
@@ -259,3 +262,31 @@ int zmk_input_processor_runtime_set_axis_snap(const struct device *dev,
                                                uint16_t threshold,
                                                uint16_t timeout_ms,
                                                bool persistent);
+
+/**
+ * @brief Set XY-to-scroll enabled state
+ *
+ * Maps X/Y input to horizontal/vertical scroll wheel events
+ *
+ * @param dev Pointer to the device structure
+ * @param enabled Whether XY-to-scroll mapping is enabled
+ * @param persistent If true, save to persistent storage; if false, temporary
+ * @return 0 on success, negative error code on failure
+ */
+int zmk_input_processor_runtime_set_xy_to_scroll_enabled(const struct device *dev,
+                                                          bool enabled,
+                                                          bool persistent);
+
+/**
+ * @brief Set XY-swap enabled state
+ *
+ * Swaps X and Y axes
+ *
+ * @param dev Pointer to the device structure
+ * @param enabled Whether XY-swap is enabled
+ * @param persistent If true, save to persistent storage; if false, temporary
+ * @return 0 on success, negative error code on failure
+ */
+int zmk_input_processor_runtime_set_xy_swap_enabled(const struct device *dev,
+                                                     bool enabled,
+                                                     bool persistent);
