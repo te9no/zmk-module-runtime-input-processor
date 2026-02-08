@@ -58,6 +58,9 @@ struct runtime_processor_config {
     // Code mapping default settings from DT
     bool initial_xy_to_scroll_enabled;
     bool initial_xy_swap_enabled;
+    // Axis reverse default settings from DT
+    bool initial_x_invert;
+    bool initial_y_invert;
 };
 
 struct runtime_processor_data {
@@ -123,6 +126,14 @@ struct runtime_processor_data {
     // Persistent code mapping settings
     bool persistent_xy_to_scroll_enabled;
     bool persistent_xy_swap_enabled;
+
+    // Axis reverse settings
+    bool x_invert;
+    bool y_invert;
+
+    // Persistent axis reverse settings
+    bool persistent_x_invert;
+    bool persistent_y_invert;
 
     // Temp-layer runtime state
     struct k_work_delayable temp_layer_activation_work;
@@ -357,6 +368,12 @@ static int runtime_processor_handle_event(
         }
     }
 
+    // Apply axis inversion after rotation
+    if ((is_x && data->x_invert) || (!is_x && data->y_invert)) {
+        event->value = -event->value;
+    }
+    value = event->value;
+
     // Apply axis snapping if configured
     if (data->axis_snap_mode != ZMK_INPUT_PROCESSOR_AXIS_SNAP_MODE_NONE &&
         event->value != 0) {
@@ -493,6 +510,8 @@ struct processor_settings {
     uint16_t axis_snap_timeout_ms;
     bool xy_to_scroll_enabled;
     bool xy_swap_enabled;
+    bool x_invert;
+    bool y_invert;
 };
 
 static void save_processor_settings_work_handler(struct k_work *work) {
@@ -518,6 +537,8 @@ static void save_processor_settings_work_handler(struct k_work *work) {
         .axis_snap_timeout_ms = data->persistent_axis_snap_timeout_ms,
         .xy_to_scroll_enabled = data->persistent_xy_to_scroll_enabled,
         .xy_swap_enabled      = data->persistent_xy_swap_enabled,
+        .x_invert             = data->persistent_x_invert,
+        .y_invert             = data->persistent_y_invert,
     };
 
     char path[64];
@@ -564,6 +585,8 @@ static int load_processor_settings_cb(const char *name, size_t len,
                 settings.axis_snap_timeout_ms;
             data->persistent_xy_to_scroll_enabled = settings.xy_to_scroll_enabled;
             data->persistent_xy_swap_enabled      = settings.xy_swap_enabled;
+            data->persistent_x_invert = settings.x_invert;
+            data->persistent_y_invert = settings.y_invert;
 
             // Apply to current values
             data->scale_multiplier   = settings.scale_multiplier;
@@ -581,6 +604,8 @@ static int load_processor_settings_cb(const char *name, size_t len,
             data->axis_snap_timeout_ms = settings.axis_snap_timeout_ms;
             data->xy_to_scroll_enabled = settings.xy_to_scroll_enabled;
             data->xy_swap_enabled      = settings.xy_swap_enabled;
+            data->x_invert             = settings.x_invert;
+            data->y_invert             = settings.y_invert;
             update_rotation_values(data);
 
             LOG_INF(
@@ -664,6 +689,11 @@ static int runtime_processor_init(const struct device *dev) {
     data->xy_swap_enabled                 = cfg->initial_xy_swap_enabled;
     data->persistent_xy_to_scroll_enabled = cfg->initial_xy_to_scroll_enabled;
     data->persistent_xy_swap_enabled      = cfg->initial_xy_swap_enabled;
+    // Initialize axis invert settings from DT defaults
+    data->x_invert            = cfg->initial_x_invert;
+    data->y_invert            = cfg->initial_y_invert;
+    data->persistent_x_invert = cfg->initial_x_invert;
+    data->persistent_y_invert = cfg->initial_y_invert;
 
     update_rotation_values(data);
 
@@ -805,6 +835,12 @@ int zmk_input_processor_runtime_reset(const struct device *dev) {
         data->temp_layer_layer_active = false;
     }
 
+    // Reset axis invert settings to defaults
+    data->x_invert            = cfg->initial_x_invert;
+    data->y_invert            = cfg->initial_y_invert;
+    data->persistent_x_invert = cfg->initial_x_invert;
+    data->persistent_y_invert = cfg->initial_y_invert;
+
     update_rotation_values(data);
 
     LOG_INF("Reset processor '%s' to defaults", cfg->name);
@@ -840,6 +876,10 @@ void zmk_input_processor_runtime_restore_persistent(const struct device *dev) {
     data->axis_snap_cross_axis_accum     = 0;
     data->axis_snap_last_decay_timestamp = 0;
 
+    // Restore axis invert settings
+    data->x_invert = data->persistent_x_invert;
+    data->y_invert = data->persistent_y_invert;
+
     LOG_DBG("Restored persistent values");
 }
 
@@ -872,6 +912,8 @@ int zmk_input_processor_runtime_get_config(
         config->axis_snap_timeout_ms = data->persistent_axis_snap_timeout_ms;
         config->xy_to_scroll_enabled = data->persistent_xy_to_scroll_enabled;
         config->xy_swap_enabled      = data->persistent_xy_swap_enabled;
+        config->x_invert             = data->persistent_x_invert;
+        config->y_invert             = data->persistent_y_invert;
     }
 
     return 0;
@@ -935,6 +977,8 @@ int zmk_input_processor_runtime_get_config(
         .initial_xy_to_scroll_enabled =                                                                  \
             DT_INST_NODE_HAS_PROP(n, xy_to_scroll_enabled),                                              \
         .initial_xy_swap_enabled = DT_INST_NODE_HAS_PROP(n, xy_swap_enabled),                            \
+        .initial_x_invert = DT_INST_NODE_HAS_PROP(n, x_invert),                                          \
+        .initial_y_invert = DT_INST_NODE_HAS_PROP(n, y_invert),                                          \
     };                                                                                                   \
     static struct runtime_processor_data runtime_data_##n;                                               \
     DEVICE_DT_INST_DEFINE(n, &runtime_processor_init, NULL, &runtime_data_##n,                           \
@@ -1512,6 +1556,62 @@ int zmk_input_processor_runtime_set_axis_snap(const struct device *dev,
 
     LOG_INF("Axis snap config: mode=%d, threshold=%d, timeout=%d ms%s", mode,
             threshold, timeout_ms,
+            persistent ? " (persistent)" : " (temporary)");
+
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        raise_state_changed_event(dev);
+    }
+#endif
+
+    return ret;
+}
+
+int zmk_input_processor_runtime_set_x_invert(const struct device *dev,
+                                              bool invert,
+                                              bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    data->x_invert                      = invert;
+
+    if (persistent) {
+        data->persistent_x_invert = invert;
+    }
+
+    LOG_INF("X axis invert: %s%s", invert ? "true" : "false",
+            persistent ? " (persistent)" : " (temporary)");
+
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        raise_state_changed_event(dev);
+    }
+#endif
+
+    return ret;
+}
+
+int zmk_input_processor_runtime_set_y_invert(const struct device *dev,
+                                              bool invert,
+                                              bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    data->y_invert                      = invert;
+
+    if (persistent) {
+        data->persistent_y_invert = invert;
+    }
+
+    LOG_INF("Y axis invert: %s%s", invert ? "true" : "false",
             persistent ? " (persistent)" : " (temporary)");
 
     int ret = 0;
