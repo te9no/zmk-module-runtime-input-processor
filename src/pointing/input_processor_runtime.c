@@ -9,6 +9,7 @@
 #include <drivers/input_processor.h>
 #include <math.h>
 #include <zephyr/device.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/dlist.h>
@@ -54,6 +55,9 @@ struct runtime_processor_config {
     uint8_t initial_axis_snap_mode;
     uint16_t initial_axis_snap_threshold;
     uint16_t initial_axis_snap_timeout_ms;
+    // Code mapping default settings from DT
+    bool initial_xy_to_scroll_enabled;
+    bool initial_xy_swap_enabled;
 };
 
 struct runtime_processor_data {
@@ -111,6 +115,14 @@ struct runtime_processor_data {
     int16_t axis_snap_cross_axis_accum;  // Accumulated movement on cross axis
     int64_t
         axis_snap_last_decay_timestamp;  // Last time accumulator was decayed
+
+    // Code mapping settings
+    bool xy_to_scroll_enabled;
+    bool xy_swap_enabled;
+
+    // Persistent code mapping settings
+    bool persistent_xy_to_scroll_enabled;
+    bool persistent_xy_swap_enabled;
 
     // Temp-layer runtime state
     struct k_work_delayable temp_layer_activation_work;
@@ -266,6 +278,30 @@ static int runtime_processor_handle_event(
 
     bool is_x     = (x_idx >= 0);
     int16_t value = event->value;
+
+    // Apply code mapping (XY swap and XY-to-scroll)
+    // These mappings are mutually exclusive - XY-to-scroll takes precedence
+    if (data->xy_to_scroll_enabled) {
+        // Map X/Y to horizontal/vertical scroll
+        // X (0x00) -> HWHEEL (0x06), Y (0x01) -> WHEEL (0x08)
+        if (is_x) {
+            event->code = INPUT_REL_HWHEEL;
+            LOG_DBG("XY-to-scroll: mapped X to HWHEEL");
+        } else {
+            event->code = INPUT_REL_WHEEL;
+            LOG_DBG("XY-to-scroll: mapped Y to WHEEL");
+        }
+    } else if (data->xy_swap_enabled) {
+        // Swap X and Y axes
+        // X (0x00) -> Y (0x01), Y (0x01) -> X (0x00)
+        if (is_x) {
+            event->code = INPUT_REL_Y;
+            LOG_DBG("XY-swap: swapped X to Y");
+        } else {
+            event->code = INPUT_REL_X;
+            LOG_DBG("XY-swap: swapped Y to X");
+        }
+    }
 
     // Handle temp-layer layer activation
     if (data->temp_layer_enabled && event->value != 0) {
@@ -455,6 +491,8 @@ struct processor_settings {
     uint8_t axis_snap_mode;
     uint16_t axis_snap_threshold;
     uint16_t axis_snap_timeout_ms;
+    bool xy_to_scroll_enabled;
+    bool xy_swap_enabled;
 };
 
 static void save_processor_settings_work_handler(struct k_work *work) {
@@ -478,6 +516,8 @@ static void save_processor_settings_work_handler(struct k_work *work) {
         .axis_snap_mode       = data->persistent_axis_snap_mode,
         .axis_snap_threshold  = data->persistent_axis_snap_threshold,
         .axis_snap_timeout_ms = data->persistent_axis_snap_timeout_ms,
+        .xy_to_scroll_enabled = data->persistent_xy_to_scroll_enabled,
+        .xy_swap_enabled      = data->persistent_xy_swap_enabled,
     };
 
     char path[64];
@@ -522,6 +562,8 @@ static int load_processor_settings_cb(const char *name, size_t len,
             data->persistent_axis_snap_threshold = settings.axis_snap_threshold;
             data->persistent_axis_snap_timeout_ms =
                 settings.axis_snap_timeout_ms;
+            data->persistent_xy_to_scroll_enabled = settings.xy_to_scroll_enabled;
+            data->persistent_xy_swap_enabled      = settings.xy_swap_enabled;
 
             // Apply to current values
             data->scale_multiplier   = settings.scale_multiplier;
@@ -537,6 +579,8 @@ static int load_processor_settings_cb(const char *name, size_t len,
             data->axis_snap_mode       = settings.axis_snap_mode;
             data->axis_snap_threshold  = settings.axis_snap_threshold;
             data->axis_snap_timeout_ms = settings.axis_snap_timeout_ms;
+            data->xy_to_scroll_enabled = settings.xy_to_scroll_enabled;
+            data->xy_swap_enabled      = settings.xy_swap_enabled;
             update_rotation_values(data);
 
             LOG_INF(
@@ -614,6 +658,12 @@ static int runtime_processor_init(const struct device *dev) {
     // Initialize axis snap runtime state
     data->axis_snap_cross_axis_accum     = 0;
     data->axis_snap_last_decay_timestamp = 0;
+
+    // Initialize code mapping settings from DT defaults
+    data->xy_to_scroll_enabled            = cfg->initial_xy_to_scroll_enabled;
+    data->xy_swap_enabled                 = cfg->initial_xy_swap_enabled;
+    data->persistent_xy_to_scroll_enabled = cfg->initial_xy_to_scroll_enabled;
+    data->persistent_xy_swap_enabled      = cfg->initial_xy_swap_enabled;
 
     update_rotation_values(data);
 
@@ -820,6 +870,8 @@ int zmk_input_processor_runtime_get_config(
         config->axis_snap_mode       = data->persistent_axis_snap_mode;
         config->axis_snap_threshold  = data->persistent_axis_snap_threshold;
         config->axis_snap_timeout_ms = data->persistent_axis_snap_timeout_ms;
+        config->xy_to_scroll_enabled = data->persistent_xy_to_scroll_enabled;
+        config->xy_swap_enabled      = data->persistent_xy_swap_enabled;
     }
 
     return 0;
@@ -880,6 +932,9 @@ int zmk_input_processor_runtime_get_config(
             DT_INST_PROP_OR(n, axis_snap_threshold, 100),                                                \
         .initial_axis_snap_timeout_ms =                                                                  \
             DT_INST_PROP_OR(n, axis_snap_timeout_ms, 1000),                                              \
+        .initial_xy_to_scroll_enabled =                                                                  \
+            DT_INST_NODE_HAS_PROP(n, xy_to_scroll_enabled),                                              \
+        .initial_xy_swap_enabled = DT_INST_NODE_HAS_PROP(n, xy_swap_enabled),                            \
     };                                                                                                   \
     static struct runtime_processor_data runtime_data_##n;                                               \
     DEVICE_DT_INST_DEFINE(n, &runtime_processor_init, NULL, &runtime_data_##n,                           \
@@ -1487,4 +1542,59 @@ void zmk_input_processor_runtime_temp_layer_keep_active(
         data->temp_layer_layer_active) {
         k_work_reschedule(&data->temp_layer_deactivation_work, K_NO_WAIT);
     }
+}
+
+int zmk_input_processor_runtime_set_xy_to_scroll_enabled(
+    const struct device *dev, bool enabled, bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    data->xy_to_scroll_enabled          = enabled;
+
+    if (persistent) {
+        data->persistent_xy_to_scroll_enabled = enabled;
+    }
+
+    LOG_INF("XY-to-scroll enabled: %d%s", enabled,
+            persistent ? " (persistent)" : " (temporary)");
+
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        raise_state_changed_event(dev);
+    }
+#endif
+
+    return ret;
+}
+
+int zmk_input_processor_runtime_set_xy_swap_enabled(const struct device *dev,
+                                                     bool enabled,
+                                                     bool persistent) {
+    if (!dev) {
+        return -EINVAL;
+    }
+
+    struct runtime_processor_data *data = dev->data;
+    data->xy_swap_enabled               = enabled;
+
+    if (persistent) {
+        data->persistent_xy_swap_enabled = enabled;
+    }
+
+    LOG_INF("XY-swap enabled: %d%s", enabled,
+            persistent ? " (persistent)" : " (temporary)");
+
+    int ret = 0;
+#if IS_ENABLED(CONFIG_SETTINGS)
+    if (persistent) {
+        ret = schedule_save_processor_settings(dev);
+        raise_state_changed_event(dev);
+    }
+#endif
+
+    return ret;
 }

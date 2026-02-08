@@ -28,6 +28,9 @@ message InputProcessorInfo {
     AxisSnapMode axis_snap_mode = 11;  // Snap mode
     uint32 axis_snap_threshold = 12;  // Threshold for unsnapping
     uint32 axis_snap_timeout_ms = 13;  // Time window for threshold check (ms)
+    // Code mapping features
+    bool xy_to_scroll_enabled = 14;  // Map X/Y to horizontal/vertical scroll
+    bool xy_swap_enabled = 15;  // Swap X and Y axes
 }
 
 message ListInputProcessorsRequest {
@@ -118,6 +121,16 @@ message SetAxisSnapTimeoutRequest {
     uint32 timeout_ms = 2;  // Time window for threshold check (ms)
 }
 
+message SetXyToScrollEnabledRequest {
+    uint32 id    = 1;  // ID of the input processor to update
+    bool enabled = 2;  // Whether XY-to-scroll mapping is enabled
+}
+
+message SetXySwapEnabledRequest {
+    uint32 id    = 1;  // ID of the input processor to update
+    bool enabled = 2;  // Whether XY-swap is enabled
+}
+
 message SetScaleMultiplierResponse {
     // Empty - use notification to report changes
 }
@@ -166,6 +179,14 @@ message SetAxisSnapTimeoutResponse {
     // Empty - use notification to report changes
 }
 
+message SetXyToScrollEnabledResponse {
+    // Empty - use notification to report changes
+}
+
+message SetXySwapEnabledResponse {
+    // Empty - use notification to report changes
+}
+
 message Request {
     oneof request_type {
         ListInputProcessorsRequest list_input_processors = 1;
@@ -183,6 +204,8 @@ message Request {
         SetAxisSnapModeRequest set_axis_snap_mode = 13;
         SetAxisSnapThresholdRequest set_axis_snap_threshold = 14;
         SetAxisSnapTimeoutRequest set_axis_snap_timeout = 15;
+        SetXyToScrollEnabledRequest set_xy_to_scroll_enabled = 16;
+        SetXySwapEnabledRequest set_xy_swap_enabled = 17;
     }
 }
 
@@ -208,6 +231,8 @@ message Response {
         SetAxisSnapModeResponse set_axis_snap_mode = 14;
         SetAxisSnapThresholdResponse set_axis_snap_threshold = 15;
         SetAxisSnapTimeoutResponse set_axis_snap_timeout = 16;
+        SetXyToScrollEnabledResponse set_xy_to_scroll_enabled = 17;
+        SetXySwapEnabledResponse set_xy_swap_enabled = 18;
     }
 }
 

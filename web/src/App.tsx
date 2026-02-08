@@ -114,6 +114,10 @@ export function InputProcessorManager() {
   const [axisSnapThreshold, setAxisSnapThreshold] = useState<number>(100);
   const [axisSnapTimeout, setAxisSnapTimeout] = useState<number>(1000);
 
+  // Code mapping state
+  const [xyToScrollEnabled, setXyToScrollEnabled] = useState<boolean>(false);
+  const [xySwapEnabled, setXySwapEnabled] = useState<boolean>(false);
+
   const subsystem = useMemo(
     () => zmkApp?.findSubsystem(SUBSYSTEM_IDENTIFIER),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -347,6 +351,34 @@ export function InputProcessorManager() {
         return;
       }
 
+      // Set XY-to-scroll enabled
+      const xyToScrollRequest = Request.create({
+        setXyToScrollEnabled: {
+          id: selectedProcessorId,
+          enabled: xyToScrollEnabled,
+        },
+      });
+      const xyToScrollResp = await callRPC(xyToScrollRequest);
+      if (xyToScrollResp?.error) {
+        setError(xyToScrollResp.error.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // Set XY-swap enabled
+      const xySwapRequest = Request.create({
+        setXySwapEnabled: {
+          id: selectedProcessorId,
+          enabled: xySwapEnabled,
+        },
+      });
+      const xySwapResp = await callRPC(xySwapRequest);
+      if (xySwapResp?.error) {
+        setError(xySwapResp.error.message);
+        setIsLoading(false);
+        return;
+      }
+
       // Updates will come via notifications
     } catch (err) {
       setError(
@@ -369,6 +401,8 @@ export function InputProcessorManager() {
     axisSnapMode,
     axisSnapThreshold,
     axisSnapTimeout,
+    xyToScrollEnabled,
+    xySwapEnabled,
   ]);
 
   const selectProcessor = useCallback(
@@ -387,6 +421,8 @@ export function InputProcessorManager() {
         setAxisSnapMode(proc.axisSnapMode);
         setAxisSnapThreshold(proc.axisSnapThreshold);
         setAxisSnapTimeout(proc.axisSnapTimeoutMs);
+        setXyToScrollEnabled(proc.xyToScrollEnabled);
+        setXySwapEnabled(proc.xySwapEnabled);
       }
     },
     [processors]
@@ -441,6 +477,8 @@ export function InputProcessorManager() {
               setAxisSnapMode(proc.axisSnapMode);
               setAxisSnapThreshold(proc.axisSnapThreshold);
               setAxisSnapTimeout(proc.axisSnapTimeoutMs);
+              setXyToScrollEnabled(proc.xyToScrollEnabled);
+              setXySwapEnabled(proc.xySwapEnabled);
             }
 
             // If no processor is selected yet, select the first one
@@ -457,6 +495,8 @@ export function InputProcessorManager() {
               setAxisSnapMode(proc.axisSnapMode);
               setAxisSnapThreshold(proc.axisSnapThreshold);
               setAxisSnapTimeout(proc.axisSnapTimeoutMs);
+              setXyToScrollEnabled(proc.xyToScrollEnabled);
+              setXySwapEnabled(proc.xySwapEnabled);
             }
           }
         } catch (err) {
@@ -888,6 +928,59 @@ export function InputProcessorManager() {
               </div>
             </>
           )}
+
+          <hr style={{ margin: "1.5rem 0", border: "1px solid #e0e0e0" }} />
+
+          <h3>Code Mapping</h3>
+          <p style={{ fontSize: "0.9em", color: "#666", marginBottom: "1rem" }}>
+            Configure input code mapping features for your pointing device
+          </p>
+
+          <div className="input-group">
+            <label htmlFor="xy-to-scroll-enabled">
+              <input
+                id="xy-to-scroll-enabled"
+                type="checkbox"
+                checked={xyToScrollEnabled}
+                onChange={(e) => setXyToScrollEnabled(e.target.checked)}
+                style={{ marginRight: "0.5rem" }}
+              />
+              Enable XY-to-Scroll Mapping
+            </label>
+            <div
+              style={{
+                fontSize: "0.85em",
+                color: "#666",
+                marginTop: "0.25rem",
+                marginLeft: "1.7rem",
+              }}
+            >
+              Map X/Y input to horizontal/vertical scroll wheel events
+            </div>
+          </div>
+
+          <div className="input-group">
+            <label htmlFor="xy-swap-enabled">
+              <input
+                id="xy-swap-enabled"
+                type="checkbox"
+                checked={xySwapEnabled}
+                onChange={(e) => setXySwapEnabled(e.target.checked)}
+                style={{ marginRight: "0.5rem" }}
+              />
+              Enable XY-Swap
+            </label>
+            <div
+              style={{
+                fontSize: "0.85em",
+                color: "#666",
+                marginTop: "0.25rem",
+                marginLeft: "1.7rem",
+              }}
+            >
+              Swap X and Y axes (Note: XY-to-scroll takes precedence)
+            </div>
+          </div>
 
           <button
             className="btn btn-primary"
