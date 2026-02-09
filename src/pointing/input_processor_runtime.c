@@ -43,7 +43,7 @@ struct runtime_processor_config {
     const struct device *temp_layer_transparent_behavior;
     const struct device *temp_layer_kp_behavior;
     size_t temp_layer_keep_keycodes_len;
-    const uint16_t *temp_layer_keep_keycodes;
+    const uint32_t *temp_layer_keep_keycodes;
     // Temp-layer default settings from DT
     bool initial_temp_layer_enabled;
     uint8_t initial_temp_layer_layer;
@@ -884,7 +884,7 @@ int zmk_input_processor_runtime_get_config(const struct device *dev, const char 
     BUILD_ASSERT(ARRAY_SIZE(runtime_x_codes_##n) == ARRAY_SIZE(runtime_y_codes_##n),               \
                  "X and Y codes need to be the same size");                                        \
     COND_CODE_1(DT_INST_NODE_HAS_PROP(n, temp_layer_keep_keycodes),                                \
-                (static const uint16_t runtime_temp_layer_keep_keycodes_##n[] =                    \
+                (static const uint32_t runtime_temp_layer_keep_keycodes_##n[] =                    \
                      DT_INST_PROP(n, temp_layer_keep_keycodes);),                                  \
                 ())                                                                                \
     BUILD_ASSERT(sizeof(DT_INST_PROP(n, processor_label)) <=                                       \
@@ -1140,11 +1140,13 @@ static int position_state_changed_listener(const zmk_event_t *eh) {
                     usage_page = HID_USAGE_KEY;
                 }
 
+                uint32_t usage = ZMK_HID_USAGE(usage_page, usage_id);
+
                 // Check if it's in the keep-keycodes list if configured
                 bool should_keep = false;
                 if (cfg->temp_layer_keep_keycodes_len > 0) {
                     for (size_t j = 0; j < cfg->temp_layer_keep_keycodes_len; j++) {
-                        if (cfg->temp_layer_keep_keycodes[j] == usage_id) {
+                        if (cfg->temp_layer_keep_keycodes[j] == usage) {
                             should_keep = true;
                             break;
                         }
