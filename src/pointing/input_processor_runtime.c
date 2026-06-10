@@ -291,10 +291,10 @@ static int runtime_processor_handle_event(const struct device *dev, struct input
         // X (0x00) -> HWHEEL (0x06), Y (0x01) -> WHEEL (0x08)
         if (is_x) {
             event->code = INPUT_REL_HWHEEL;
-            LOG_DBG("XY-to-scroll: mapped X to HWHEEL");
+            LOG_DBG("%s: XY-to-scroll mapped X to HWHEEL value=%d", cfg->name, event->value);
         } else {
             event->code = INPUT_REL_WHEEL;
-            LOG_DBG("XY-to-scroll: mapped Y to WHEEL");
+            LOG_DBG("%s: XY-to-scroll mapped Y to WHEEL value=%d", cfg->name, event->value);
         }
     } else if (data->xy_swap_enabled) {
         // Swap X and Y axes
@@ -583,10 +583,12 @@ static int load_processor_settings_cb(const char *name, size_t len, settings_rea
             update_rotation_values(data);
 
             LOG_INF("Loaded settings for %s: scale=%d/%d, rotation=%d, "
-                    "temp_layer=%d, active_layers=0x%08x, axis_snap=%d",
+                    "temp_layer=%d, active_layers=0x%08x, axis_snap=%d, "
+                    "xy_to_scroll=%d, xy_swap=%d",
                     cfg->name, settings.scale_multiplier, settings.scale_divisor,
                     settings.rotation_degrees, settings.temp_layer_enabled, settings.active_layers,
-                    settings.axis_snap_mode);
+                    settings.axis_snap_mode, settings.xy_to_scroll_enabled,
+                    settings.xy_swap_enabled);
             return 0;
         }
     }
@@ -675,7 +677,11 @@ static int runtime_processor_init(const struct device *dev) {
     k_work_init_delayable(&data->temp_layer_deactivation_work,
                           temp_layer_deactivation_work_handler);
 
-    LOG_INF("Runtime processor '%s' initialized", cfg->name);
+    LOG_INF("Runtime processor '%s' initialized: scale=%d/%d rotation=%d active_layers=0x%08x "
+            "xy_to_scroll=%d xy_swap=%d x_invert=%d y_invert=%d",
+            cfg->name, data->scale_multiplier, data->scale_divisor, data->rotation_degrees,
+            data->active_layers, data->xy_to_scroll_enabled, data->xy_swap_enabled,
+            data->x_invert, data->y_invert);
 
     return 0;
 }
@@ -796,6 +802,12 @@ int zmk_input_processor_runtime_reset(const struct device *dev) {
         data->temp_layer_layer_active = false;
     }
 
+    // Reset code mapping settings to defaults
+    data->xy_to_scroll_enabled = cfg->initial_xy_to_scroll_enabled;
+    data->xy_swap_enabled = cfg->initial_xy_swap_enabled;
+    data->persistent_xy_to_scroll_enabled = cfg->initial_xy_to_scroll_enabled;
+    data->persistent_xy_swap_enabled = cfg->initial_xy_swap_enabled;
+
     // Reset axis invert settings to defaults
     data->x_invert = cfg->initial_x_invert;
     data->y_invert = cfg->initial_y_invert;
@@ -836,6 +848,10 @@ void zmk_input_processor_runtime_restore_persistent(const struct device *dev) {
     // Reset snap state when restoring
     data->axis_snap_cross_axis_accum = 0;
     data->axis_snap_last_decay_timestamp = 0;
+
+    // Restore code mapping settings
+    data->xy_to_scroll_enabled = data->persistent_xy_to_scroll_enabled;
+    data->xy_swap_enabled = data->persistent_xy_swap_enabled;
 
     // Restore axis invert settings
     data->x_invert = data->persistent_x_invert;
