@@ -43,7 +43,7 @@ struct runtime_processor_config {
     const struct device *temp_layer_transparent_behavior;
     const struct device *temp_layer_kp_behavior;
     size_t temp_layer_keep_keycodes_len;
-    const uint16_t *temp_layer_keep_keycodes;
+    const uint32_t *temp_layer_keep_keycodes;
     // Temp-layer default settings from DT
     bool initial_temp_layer_enabled;
     uint8_t initial_temp_layer_layer;
@@ -408,8 +408,6 @@ static int runtime_processor_handle_event(const struct device *dev, struct input
                 }
             }
         }
-
-        bool should_unlock = false;
 
         if (is_cross_axis) {
             int16_t current_abs_accum = data->axis_snap_cross_axis_accum < 0
@@ -906,7 +904,7 @@ int zmk_input_processor_runtime_get_config(const struct device *dev, const char 
     BUILD_ASSERT(ARRAY_SIZE(runtime_x_codes_##n) == ARRAY_SIZE(runtime_y_codes_##n),               \
                  "X and Y codes need to be the same size");                                        \
     COND_CODE_1(DT_INST_NODE_HAS_PROP(n, temp_layer_keep_keycodes),                                \
-                (static const uint16_t runtime_temp_layer_keep_keycodes_##n[] =                    \
+                (static const uint32_t runtime_temp_layer_keep_keycodes_##n[] =                    \
                      DT_INST_PROP(n, temp_layer_keep_keycodes);),                                  \
                 ())                                                                                \
     BUILD_ASSERT(sizeof(DT_INST_PROP(n, processor_label)) <=                                       \
@@ -962,13 +960,13 @@ DT_INST_FOREACH_STATUS_OKAY(RUNTIME_PROCESSOR_INST)
 #if DT_HAS_COMPAT_STATUS_OKAY(DT_DRV_COMPAT)
 #define DEVICE_ADDR(idx) DEVICE_DT_GET(DT_DRV_INST(idx)),
 
-static struct device *runtime_processors[] = {DT_INST_FOREACH_STATUS_OKAY(DEVICE_ADDR)};
+static const struct device *runtime_processors[] = {DT_INST_FOREACH_STATUS_OKAY(DEVICE_ADDR)};
 
 static const size_t runtime_processors_count = sizeof(runtime_processors) / sizeof(struct device *);
 
 #else
 
-static struct device *runtime_processors[] = {};
+static const struct device *runtime_processors[] = {};
 static const size_t runtime_processors_count = 0;
 
 #endif
@@ -1166,7 +1164,7 @@ static int position_state_changed_listener(const zmk_event_t *eh) {
                 bool should_keep = false;
                 if (cfg->temp_layer_keep_keycodes_len > 0) {
                     for (size_t j = 0; j < cfg->temp_layer_keep_keycodes_len; j++) {
-                        if (cfg->temp_layer_keep_keycodes[j] == usage_id) {
+                        if (ZMK_HID_USAGE_ID(cfg->temp_layer_keep_keycodes[j]) == usage_id) {
                             should_keep = true;
                             break;
                         }
