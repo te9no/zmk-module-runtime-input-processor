@@ -5,9 +5,12 @@ zephyr_include_directories(include)
 if(CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR)
     # Add runtime input processor source
     target_sources(app PRIVATE src/pointing/input_processor_runtime.c)
-    target_sources(app PRIVATE src/behaviors/behavior_input_processor_temp_config.c)
-    target_sources(app PRIVATE src/behaviors/behavior_input_processor_temp_layer_keep_active.c)
-    target_sources(app PRIVATE src/behaviors/behavior_input_processor_axis_snap.c)
+    target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_INPUT_PROCESSOR_TEMP_CONFIG app PRIVATE
+        src/behaviors/behavior_input_processor_temp_config.c)
+    target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_INPUT_PROCESSOR_TEMP_LAYER_KEEP_ACTIVE app PRIVATE
+        src/behaviors/behavior_input_processor_temp_layer_keep_active.c)
+    target_sources_ifdef(CONFIG_ZMK_BEHAVIOR_INPUT_PROCESSOR_AXIS_SNAP app PRIVATE
+        src/behaviors/behavior_input_processor_axis_snap.c)
     target_sources(app PRIVATE src/events/input_processor_state_changed.c)
 
     if(CONFIG_ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC)

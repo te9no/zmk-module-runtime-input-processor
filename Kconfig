@@ -7,6 +7,21 @@ config ZMK_RUNTIME_INPUT_PROCESSOR_STUDIO_RPC
     bool "Enable runtime input processor custom Studio RPC"
     depends on ZMK_STUDIO
 
+config ZMK_BEHAVIOR_INPUT_PROCESSOR_TEMP_CONFIG
+    bool
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_INPUT_PROCESSOR_TEMP_CONFIG_ENABLED
+
+config ZMK_BEHAVIOR_INPUT_PROCESSOR_TEMP_LAYER_KEEP_ACTIVE
+    bool
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_INPUT_PROCESSOR_TEMP_LAYER_KEEP_ACTIVE_ENABLED
+
+config ZMK_BEHAVIOR_INPUT_PROCESSOR_AXIS_SNAP
+    bool
+    default y
+    depends on DT_HAS_ZMK_BEHAVIOR_INPUT_PROCESSOR_AXIS_SNAP_ENABLED
+
 config ZMK_RUNTIME_INPUT_PROCESSOR_NAME_MAX_LEN
     int "Maximum length of runtime input processor names"
     default 8
